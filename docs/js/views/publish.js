@@ -17,14 +17,17 @@ export async function renderPublishPage(container, { param: eventId }) {
     return;
   }
 
-  // Calculate Aggregates
   const totalSlots = event.timeslots ? event.timeslots.length : 0;
   const bookedSlots = event.timeslots ? event.timeslots.filter(s => s.status === 'booked').length : 0;
   const availableSlots = totalSlots - bookedSlots;
   const cancelledBookings = event.bookings ? event.bookings.filter(b => b.status === 'cancelled').length : 0;
   const noShows = event.bookings ? event.bookings.filter(b => b.status === 'no_show').length : 0;
 
-  const publicBookingURL = `${window.location.origin}/#/book/${event.slug}`;
+  // Accurately compute base path to include repo name (/eventbook/) on GitHub Pages
+  const basePath = window.location.pathname.endsWith('/') 
+    ? window.location.pathname 
+    : window.location.pathname + '/';
+  const publicBookingURL = `${window.location.origin}${basePath}#/book/${event.slug}`;
   const qrCodeData = generateQRCodeDataURI(publicBookingURL);
 
   container.innerHTML = `
@@ -40,7 +43,6 @@ export async function renderPublishPage(container, { param: eventId }) {
         </div>
 
         <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
-          <button id="btn-copy-link" class="btn btn-secondary btn-sm">Copy Link</button>
           <button id="btn-export-csv" class="btn btn-secondary btn-sm">Export CSV</button>
           <button id="btn-toggle-status" class="btn ${event.status === 'published' ? 'btn-danger' : 'btn-primary'} btn-sm">
             ${event.status === 'published' ? 'Unpublish' : 'Publish'}
@@ -48,21 +50,33 @@ export async function renderPublishPage(container, { param: eventId }) {
         </div>
       </div>
 
-      <!-- Quick Access Share Card -->
-      <div class="card" style="background:var(--primary-light); border:1px solid #c7d2fe;">
-        <h3 style="font-size:1.1rem; font-weight:700; color:var(--primary-hover); margin-bottom:0.5rem;">Participant Access Card</h3>
-        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem;">
-          <div style="word-break:break-all;">
-            <div style="font-size:0.875rem; margin-bottom:0.25rem;"><strong>Booking Link:</strong> <code>${publicBookingURL}</code></div>
-            <div style="font-size:0.875rem;"><strong>Required Passcode:</strong> <span style="font-family:monospace; font-weight:700; font-size:1.1rem; background:#fff; padding:2px 8px; border-radius:4px;">${event.passcode_plain || '******'}</span></div>
+      <!-- Participant Access Card with Inline Copy Button (Matching BRD Layout) -->
+      <div class="card" style="background:#f8fafc; border:1px solid var(--border-color); padding:1.5rem;">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1.25rem;">
+          <div style="flex:1; min-width:280px;">
+            <label class="form-label" style="margin-bottom:0.4rem;">Booking Link</label>
+            <div style="display:flex; gap:0.5rem; align-items:center;">
+              <input type="text" id="input-booking-link" class="form-control" value="${publicBookingURL}" readonly style="background:#ffffff; font-family:monospace; font-size:0.9rem;" />
+              <button id="btn-copy-inline" class="btn btn-secondary" style="white-space:nowrap; gap:0.35rem;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                Copy
+              </button>
+            </div>
+            
+            <div style="margin-top:0.75rem; font-size:0.9rem; display:flex; align-items:center; gap:0.5rem;">
+              <span style="color:var(--text-muted);">Passcode:</span>
+              <span style="font-family:monospace; font-weight:700; background:#e2e8f0; padding:2px 8px; border-radius:4px;">${event.passcode_plain || '******'}</span>
+            </div>
           </div>
-          <div>
-            <img src="${qrCodeData}" alt="QR Code" style="width:90px; height:90px; background:#fff; border-radius:8px; padding:4px;" />
+
+          <div style="text-align:center;">
+            <img src="${qrCodeData}" alt="QR Code" style="width:90px; height:90px; background:#fff; border-radius:8px; padding:4px; border:1px solid var(--border-color);" />
+            <div style="font-size:0.75rem; color:var(--text-muted); margin-top:0.25rem;">Scan to Book</div>
           </div>
         </div>
       </div>
 
-      <!-- Metrics Row (Matching BRD Mockup) -->
+      <!-- Metrics Row -->
       <div class="grid-cards" style="grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); margin-bottom:1.5rem;">
         <div class="card" style="margin-bottom:0; text-align:center;">
           <span style="font-size:0.75rem; font-weight:700; color:var(--text-muted); text-transform:uppercase;">TOTAL SLOTS</span>
@@ -88,10 +102,11 @@ export async function renderPublishPage(container, { param: eventId }) {
     </div>
   `;
 
-  // Actions
-  document.getElementById('btn-copy-link').onclick = () => {
-    navigator.clipboard.writeText(`Event: ${event.name}\nBooking Link: ${publicBookingURL}\nPasscode: ${event.passcode_plain}`);
-    toast('Access details copied to clipboard!', 'success');
+  // Inline Copy Button Action
+  document.getElementById('btn-copy-inline').onclick = () => {
+    const input = document.getElementById('input-booking-link');
+    navigator.clipboard.writeText(input.value);
+    toast('Booking link copied to clipboard!', 'success');
   };
 
   document.getElementById('btn-toggle-status').onclick = async () => {
