@@ -3,10 +3,17 @@ import { supabase } from '../supabaseClient.js';
 export async function renderDashboard(container) {
   const { data: { user } } = await supabase.auth.getUser();
 
-  // Added event_type to the select query
+  // If not logged in, redirect immediately
+  if (!user) {
+    window.location.hash = '#/auth';
+    return;
+  }
+
+  // Only fetch events belonging to THIS organizer
   const { data: events, error } = await supabase
     .from('events')
     .select('id, name, status, event_type, created_at, timeslots(count), bookings(count)')
+    .eq('organizer_id', user.id)
     .order('created_at', { ascending: false });
 
   if (error) {
@@ -48,7 +55,7 @@ export async function renderDashboard(container) {
     <!-- Events List Card -->
     <div class="card">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem; flex-wrap:wrap; gap:0.5rem;">
-        <h2 style="font-size:1.25rem; font-weight:600;">Recent Events</h2>
+        <h2 style="font-size:1.25rem; font-weight:600;">My Events</h2>
         <div style="position:relative; width:100%; max-width:280px;">
           <input type="text" id="event-search" class="form-control" placeholder="Search events..." />
         </div>
@@ -65,7 +72,13 @@ export async function renderDashboard(container) {
             </tr>
           </thead>
           <tbody id="events-tbody">
-            ${(events || []).map(evt => `
+            ${totalEvents === 0 ? `
+              <tr>
+                <td colspan="4" style="text-align:center; padding:2rem; color:var(--text-muted);">
+                  No events found. Click <strong>New Event</strong> above to create your first scheduling event.
+                </td>
+              </tr>
+            ` : (events || []).map(evt => `
               <tr style="border-bottom:1px solid var(--border-color);">
                 <td style="padding:0.85rem 0.5rem; font-weight:600;">
                   <a href="#/publish/${evt.id}" style="color:var(--text-main); text-decoration:none;">${evt.name}</a>
