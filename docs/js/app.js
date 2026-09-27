@@ -11,12 +11,13 @@ import { supabase } from './supabaseClient.js';
 
 const appRoot = document.getElementById('app-root');
 
-// Route Registry
+// Route Registry supporting both /create and /edit/:id
 const routes = {
   '/auth': (root) => renderAuthPage(root),
   '/dashboard': (root) => renderDashboard(root),
   '/events': (root) => renderDashboard(root),
-  '/create': (root) => renderWizard(root),
+  '/create': (root, ctx) => renderWizard(root, ctx),
+  '/edit/:id': (root, ctx) => renderWizard(root, ctx),
   '/publish/:id': (root, ctx) => renderPublishPage(root, ctx),
   '/book/:slug': (root, ctx) => renderBookingPage(root, ctx),
   '/analytics/:id': (root, ctx) => renderAnalyticsPage(root, ctx),
