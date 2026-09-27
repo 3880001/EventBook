@@ -3,13 +3,13 @@ import { supabase } from '../supabaseClient.js';
 export async function renderDashboard(container) {
   const { data: { user } } = await supabase.auth.getUser();
 
-  // If not logged in, redirect immediately
+  // Redirect to authentication if session is missing
   if (!user) {
     window.location.hash = '#/auth';
     return;
   }
 
-  // Only fetch events belonging to THIS organizer
+  // Fetch only events created by this organizer
   const { data: events, error } = await supabase
     .from('events')
     .select('id, name, status, event_type, created_at, timeslots(count), bookings(count)')
@@ -17,7 +17,7 @@ export async function renderDashboard(container) {
     .order('created_at', { ascending: false });
 
   if (error) {
-    container.innerHTML = `<div class="card"><p>Failed to load dashboard: ${error.message}</p></div>`;
+    container.innerHTML = `<div class="card"><p style="color:var(--danger)">Failed to load dashboard: ${error.message}</p></div>`;
     return;
   }
 
@@ -91,8 +91,9 @@ export async function renderDashboard(container) {
                 <td style="padding:0.85rem 0.5rem; text-transform:capitalize; font-size:0.9rem;">
                   ${(evt.event_type || 'single_day').replace('_', ' ')}
                 </td>
-                <td style="padding:0.85rem 0.5rem;">
+                <td style="padding:0.85rem 0.5rem; display:flex; gap:0.35rem; flex-wrap:wrap;">
                   <a href="#/publish/${evt.id}" class="btn btn-secondary btn-sm">Overview</a>
+                  <a href="#/edit/${evt.id}" class="btn btn-secondary btn-sm">Edit</a>
                   <a href="#/analytics/${evt.id}" class="btn btn-secondary btn-sm">Metrics</a>
                 </td>
               </tr>
