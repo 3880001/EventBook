@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>EventBook Redirecting...</title>
+  <script>
+    // Redirect all 404 paths to index.html preserving hash and query params
+    const path = window.location.pathname;
+    const search = window.location.search;
+    const hash = window.location.hash;
+    window.location.replace('/eventbook/' + (hash || (search ? '?' + search : '')));
+  </script>
+</head>
+<body>
+  <p>Redirecting to EventBook...</p>
+</body>
+</html>
