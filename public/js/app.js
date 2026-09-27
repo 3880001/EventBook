@@ -6,12 +6,14 @@ import { renderBookingPage } from './views/booking.js';
 import { renderAdminDashboard } from './views/admin.js';
 import { renderAnalyticsPage } from './views/analytics.js';
 import { renderFeedbackPage } from './views/feedback.js';
+import { renderAuthPage } from './views/auth.js';
 import { supabase } from './supabaseClient.js';
 
 const appRoot = document.getElementById('app-root');
 
 // Route Registry
 const routes = {
+  '/auth': (root) => renderAuthPage(root),
   '/dashboard': (root) => renderDashboard(root),
   '/events': (root) => renderDashboard(root),
   '/create': (root) => renderWizard(root),
@@ -24,17 +26,27 @@ const routes = {
 
 new Router(routes, appRoot);
 
-// Auth state tracking
+// Auth state tracking & Top Nav Header Button
 supabase.auth.onAuthStateChange((event, session) => {
   const authBtn = document.getElementById('btn-auth-action');
+  const mainNav = document.getElementById('main-nav');
+
   if (session?.user) {
-    authBtn.innerText = 'Sign Out';
-    authBtn.onclick = () => supabase.auth.signOut();
+    if (authBtn) {
+      authBtn.innerText = 'Sign Out';
+      authBtn.onclick = async () => {
+        await supabase.auth.signOut();
+        window.location.hash = '#/auth';
+      };
+    }
+    if (mainNav) mainNav.style.display = 'flex';
   } else {
-    authBtn.innerText = 'Sign In';
-    authBtn.onclick = () => {
-      const email = prompt('Enter your organizer email:');
-      if (email) supabase.auth.signInWithOtp({ email });
-    };
+    if (authBtn) {
+      authBtn.innerText = 'Sign In';
+      authBtn.onclick = () => {
+        window.location.hash = '#/auth';
+      };
+    }
+    if (mainNav) mainNav.style.display = 'none';
   }
 });
