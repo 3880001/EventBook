@@ -1,6 +1,6 @@
 // Supabase Client Wrapper
-export const SUPABASE_URL = window.__ENV_SUPABASE_URL || 'https://xyzcompany.supabase.co';
-export const SUPABASE_ANON_KEY = window.__ENV_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...';
+export const SUPABASE_URL = window.__ENV_SUPABASE_URL || 'https://oybwrnokffjmdpnnymxm.supabase.co';
+export const SUPABASE_ANON_KEY = window.__ENV_SUPABASE_ANON_KEY || 'sb_publishable_TJDC2IP_1j8uGuKpAekSEg_PvxPuHSr';
 
 export const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: {
