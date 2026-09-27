@@ -13,7 +13,7 @@ export async function renderPublishPage(container, { param: eventId }) {
     .single();
 
   if (error || !event) {
-    container.innerHTML = `<div class="card"><p>Failed to find event.</p></div>`;
+    container.innerHTML = `<div class="card"><p style="color:var(--danger)">Failed to find event: ${error?.message || 'Event not found'}</p></div>`;
     return;
   }
 
@@ -23,6 +23,7 @@ export async function renderPublishPage(container, { param: eventId }) {
   const cancelledBookings = event.bookings ? event.bookings.filter(b => b.status === 'cancelled').length : 0;
   const noShows = event.bookings ? event.bookings.filter(b => b.status === 'no_show').length : 0;
 
+  // Accurately compute base path to include repo name (/eventbook/) on GitHub Pages
   const basePath = window.location.pathname.endsWith('/') 
     ? window.location.pathname 
     : window.location.pathname + '/';
@@ -41,8 +42,8 @@ export async function renderPublishPage(container, { param: eventId }) {
           <p style="color:var(--text-muted); font-size:0.9rem;">${event.location_details || 'Online'} &bull; ${event.slot_duration_minutes}m slots</p>
         </div>
 
+        <!-- Top Action Buttons Bar -->
         <div style="display:flex; gap:0.5rem; flex-wrap:wrap; align-items:center;">
-          <!-- Edit Event Option -->
           <a href="#/edit/${event.id}" class="btn btn-secondary btn-sm" style="display:inline-flex; align-items:center; gap:0.35rem;">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
             Edit Event
@@ -106,12 +107,14 @@ export async function renderPublishPage(container, { param: eventId }) {
     </div>
   `;
 
+  // Inline Copy Button
   document.getElementById('btn-copy-inline').onclick = () => {
     const input = document.getElementById('input-booking-link');
     navigator.clipboard.writeText(input.value);
     toast('Booking link copied to clipboard!', 'success');
   };
 
+  // Toggle Publish/Unpublish Status
   document.getElementById('btn-toggle-status').onclick = async () => {
     const nextStatus = event.status === 'published' ? 'draft' : 'published';
     await supabase.from('events').update({ status: nextStatus }).eq('id', event.id);
@@ -119,6 +122,7 @@ export async function renderPublishPage(container, { param: eventId }) {
     renderPublishPage(container, { param: eventId });
   };
 
+  // Export Attendees to CSV
   document.getElementById('btn-export-csv').onclick = async () => {
     const { data: bookings } = await supabase
       .from('bookings')
