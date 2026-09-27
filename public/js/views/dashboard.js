@@ -3,10 +3,10 @@ import { supabase } from '../supabaseClient.js';
 export async function renderDashboard(container) {
   const { data: { user } } = await supabase.auth.getUser();
 
-  // Metrics query
+  // Added event_type to the select query
   const { data: events, error } = await supabase
     .from('events')
-    .select('id, name, status, created_at, timeslots(count), bookings(count)')
+    .select('id, name, status, event_type, created_at, timeslots(count), bookings(count)')
     .order('created_at', { ascending: false });
 
   if (error) {
@@ -76,7 +76,7 @@ export async function renderDashboard(container) {
                   </span>
                 </td>
                 <td style="padding:0.85rem 0.5rem; text-transform:capitalize; font-size:0.9rem;">
-                  ${evt.event_type.replace('_', ' ')}
+                  ${(evt.event_type || 'single_day').replace('_', ' ')}
                 </td>
                 <td style="padding:0.85rem 0.5rem;">
                   <a href="#/publish/${evt.id}" class="btn btn-secondary btn-sm">Overview</a>
@@ -90,12 +90,15 @@ export async function renderDashboard(container) {
     </div>
   `;
 
-  // Search filter implementation
-  document.getElementById('event-search').addEventListener('input', (e) => {
-    const q = e.target.value.toLowerCase();
-    document.querySelectorAll('#events-tbody tr').forEach(row => {
-      const text = row.innerText.toLowerCase();
-      row.style.display = text.includes(q) ? '' : 'none';
+  // Search filter
+  const searchInput = document.getElementById('event-search');
+  if (searchInput) {
+    searchInput.addEventListener('input', (e) => {
+      const q = e.target.value.toLowerCase();
+      document.querySelectorAll('#events-tbody tr').forEach(row => {
+        const text = row.innerText.toLowerCase();
+        row.style.display = text.includes(q) ? '' : 'none';
+      });
     });
-  });
+  }
 }
