@@ -1,8 +1,11 @@
 import { supabase } from '../supabaseClient.js';
 import { toast } from '../utils/ui.js';
 
-export function renderWizard(container) {
+export async function renderWizard(container, ctx = {}) {
+  const editEventId = ctx?.param;
+  let isEditMode = !!editEventId;
   let step = 1;
+
   const wizardData = {
     name: '',
     description: '',
@@ -21,10 +24,58 @@ export function renderWizard(container) {
     custom_fields: []
   };
 
+  // If in edit mode, fetch existing event data from Supabase
+  if (isEditMode) {
+    container.innerHTML = '<div class="loader-center"><div class="spinner"></div></div>';
+    const { data: event, error } = await supabase
+      .from('events')
+      .select('*, event_dates(*), event_custom_fields(*)')
+      .eq('id', editEventId)
+      .single();
+
+    if (error || !event) {
+      container.innerHTML = `<div class="card"><p style="color:var(--danger)">Failed to load event for editing: ${error?.message || 'Not found'}</p></div>`;
+      return;
+    }
+
+    wizardData.name = event.name || '';
+    wizardData.description = event.description || '';
+    wizardData.event_type = event.event_type || 'single_day';
+    wizardData.location_details = event.location_details || '';
+    wizardData.passcode = event.passcode_plain || '';
+    wizardData.slot_duration_minutes = event.slot_duration_minutes || 15;
+    wizardData.buffer_minutes = event.buffer_minutes || 0;
+    wizardData.parallel_tracks = event.parallel_tracks || 1;
+    wizardData.max_bookings_per_participant = event.max_bookings_per_participant || 1;
+    wizardData.participant_id_type = event.participant_id_type || 'system_generated';
+
+    if (event.event_dates && event.event_dates.length > 0) {
+      wizardData.dates = event.event_dates.map(d => ({
+        date: d.event_date,
+        start_time: d.start_time.slice(0, 5),
+        end_time: d.end_time.slice(0, 5)
+      }));
+      wizardData.is_full_day = !!event.event_dates[0].is_full_day;
+    }
+
+    if (event.event_custom_fields && event.event_custom_fields.length > 0) {
+      wizardData.custom_fields = event.event_custom_fields.map(f => ({
+        label: f.label,
+        field_type: f.field_type,
+        required: f.required
+      }));
+    }
+  }
+
   function renderCurrentStep() {
     container.innerHTML = `
       <div style="max-width:800px; margin:0 auto;">
-        <h1 style="font-size:1.75rem; font-weight:700; margin-bottom:1.5rem;">Create Event</h1>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem; flex-wrap:wrap; gap:0.5rem;">
+          <h1 style="font-size:1.75rem; font-weight:700;">
+            ${isEditMode ? 'Edit & Republish Event' : 'Create Event'}
+          </h1>
+          ${isEditMode ? `<a href="#/publish/${editEventId}" class="btn btn-secondary btn-sm">&larr; Cancel Edit</a>` : ''}
+        </div>
 
         <!-- Stepper Indicators -->
         <div class="stepper-header">
@@ -148,7 +199,7 @@ export function renderWizard(container) {
             <input type="number" id="w-buffer" class="form-control" value="${data.buffer_minutes}" min="0" max="60" ${data.is_full_day ? 'disabled' : ''} />
           </div>
 
-          <!-- Parallel Tracks Dropdown (Track 1 to Track 5) -->
+          <!-- Parallel Tracks Dropdown -->
           <div class="form-group">
             <label class="form-label">Parallel Track</label>
             <select id="w-tracks" class="form-control">
@@ -179,8 +230,8 @@ export function renderWizard(container) {
         <div class="form-group">
           <label class="form-label">Identification Method</label>
           <select id="w-id-type" class="form-control">
-            <option value="system_generated">System-Generated Participant ID (e.g. EB-8F31B)</option>
-            <option value="physical_verification">Physical Verification / Badge Code Required</option>
+            <option value="system_generated" ${data.participant_id_type === 'system_generated' ? 'selected' : ''}>System-Generated Participant ID (e.g. EB-8F31B)</option>
+            <option value="physical_verification" ${data.participant_id_type === 'physical_verification' ? 'selected' : ''}>Physical Verification / Badge Code Required</option>
           </select>
         </div>
 
@@ -210,8 +261,12 @@ export function renderWizard(container) {
         <div style="display:flex; justify-content:space-between; margin-top:2.5rem; flex-wrap:wrap; gap:1rem;">
           <button id="btn-step3-back" class="btn btn-secondary">&larr; Back</button>
           <div style="display:flex; gap:0.75rem;">
-            <button id="btn-save-draft" class="btn btn-secondary">Save Draft</button>
-            <button id="btn-publish-final" class="btn btn-primary">Publish Event &rarr;</button>
+            <button id="btn-save-draft" class="btn btn-secondary">
+              ${isEditMode ? 'Save as Draft' : 'Save Draft'}
+            </button>
+            <button id="btn-publish-final" class="btn btn-primary">
+              ${isEditMode ? 'Update & Republish &rarr;' : 'Publish Event &rarr;'}
+            </button>
           </div>
         </div>
       `;
@@ -231,7 +286,7 @@ export function renderWizard(container) {
         wizardData.passcode = document.getElementById('w-passcode').value || Math.floor(100000 + Math.random() * 900000).toString();
         
         if (wizardData.is_full_day) {
-          wizardData.slot_duration_minutes = 480; // 8-hour single slot
+          wizardData.slot_duration_minutes = 480;
           wizardData.buffer_minutes = 0;
           wizardData.dates.forEach(d => {
             d.start_time = '09:00';
@@ -300,42 +355,94 @@ export function renderWizard(container) {
           });
         });
 
-        const slug = wizardData.name.toLowerCase().replace(/[^a-z0-9]/g, '-') + '-' + Math.random().toString(36).substring(2, 7);
-        const { data: event, error: eventErr } = await supabase.from('events').insert({
-          organizer_id: user.id,
-          name: wizardData.name,
-          slug,
-          description: wizardData.description,
-          event_type: wizardData.event_type,
-          status,
-          passcode_plain: wizardData.passcode,
-          passcode_hash: wizardData.passcode,
-          slot_duration_minutes: wizardData.slot_duration_minutes,
-          buffer_minutes: wizardData.buffer_minutes,
-          parallel_tracks: wizardData.parallel_tracks,
-          max_bookings_per_participant: wizardData.max_bookings_per_participant,
-          location_details: wizardData.location_details
-        }).select().single();
+        let targetEventId = editEventId;
 
-        if (eventErr) return alert('Event creation failed: ' + eventErr.message);
+        if (isEditMode) {
+          // --- UPDATE FLOW ---
+          const { error: updateErr } = await supabase
+            .from('events')
+            .update({
+              name: wizardData.name,
+              description: wizardData.description,
+              event_type: wizardData.event_type,
+              status,
+              passcode_plain: wizardData.passcode,
+              passcode_hash: wizardData.passcode,
+              slot_duration_minutes: wizardData.slot_duration_minutes,
+              buffer_minutes: wizardData.buffer_minutes,
+              parallel_tracks: wizardData.parallel_tracks,
+              max_bookings_per_participant: wizardData.max_bookings_per_participant,
+              participant_id_type: wizardData.participant_id_type,
+              location_details: wizardData.location_details,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', editEventId);
 
-        if (cfs.length > 0) {
-          await supabase.from('event_custom_fields').insert(cfs.map(f => ({ ...f, event_id: event.id })));
+          if (updateErr) return alert('Event update failed: ' + updateErr.message);
+
+          // Refresh custom fields
+          await supabase.from('event_custom_fields').delete().eq('event_id', editEventId);
+          if (cfs.length > 0) {
+            await supabase.from('event_custom_fields').insert(cfs.map(f => ({ ...f, event_id: editEventId })));
+          }
+
+          // Refresh dates
+          await supabase.from('event_dates').delete().eq('event_id', editEventId);
+          for (const d of wizardData.dates) {
+            await supabase.from('event_dates').insert({
+              event_id: editEventId,
+              event_date: d.date,
+              start_time: d.start_time,
+              end_time: d.end_time,
+              is_full_day: wizardData.is_full_day
+            });
+          }
+
+          // Rebuild available slots safely without erasing booked slots
+          await supabase.rpc('rebuild_event_slots', { p_event_id: editEventId });
+
+          toast('Event updated and republished successfully!', 'success');
+          window.location.hash = `#/publish/${editEventId}`;
+        } else {
+          // --- CREATE FLOW ---
+          const slug = wizardData.name.toLowerCase().replace(/[^a-z0-9]/g, '-') + '-' + Math.random().toString(36).substring(2, 7);
+          const { data: event, error: eventErr } = await supabase.from('events').insert({
+            organizer_id: user.id,
+            name: wizardData.name,
+            slug,
+            description: wizardData.description,
+            event_type: wizardData.event_type,
+            status,
+            passcode_plain: wizardData.passcode,
+            passcode_hash: wizardData.passcode,
+            slot_duration_minutes: wizardData.slot_duration_minutes,
+            buffer_minutes: wizardData.buffer_minutes,
+            parallel_tracks: wizardData.parallel_tracks,
+            max_bookings_per_participant: wizardData.max_bookings_per_participant,
+            participant_id_type: wizardData.participant_id_type,
+            location_details: wizardData.location_details
+          }).select().single();
+
+          if (eventErr) return alert('Event creation failed: ' + eventErr.message);
+
+          if (cfs.length > 0) {
+            await supabase.from('event_custom_fields').insert(cfs.map(f => ({ ...f, event_id: event.id })));
+          }
+
+          for (const d of wizardData.dates) {
+            await supabase.from('event_dates').insert({
+              event_id: event.id,
+              event_date: d.date,
+              start_time: d.start_time,
+              end_time: d.end_time,
+              is_full_day: wizardData.is_full_day
+            });
+          }
+
+          await supabase.rpc('generate_event_slots', { p_event_id: event.id });
+          toast('Event created successfully!', 'success');
+          window.location.hash = `#/publish/${event.id}`;
         }
-
-        for (const d of wizardData.dates) {
-          await supabase.from('event_dates').insert({
-            event_id: event.id,
-            event_date: d.date,
-            start_time: d.start_time,
-            end_time: d.end_time,
-            is_full_day: wizardData.is_full_day
-          });
-        }
-
-        await supabase.rpc('generate_event_slots', { p_event_id: event.id });
-        toast('Event created successfully!', 'success');
-        window.location.hash = `#/publish/${event.id}`;
       };
 
       document.getElementById('btn-save-draft').onclick = () => commitEvent('draft');
