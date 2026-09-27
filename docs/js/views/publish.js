@@ -23,7 +23,6 @@ export async function renderPublishPage(container, { param: eventId }) {
   const cancelledBookings = event.bookings ? event.bookings.filter(b => b.status === 'cancelled').length : 0;
   const noShows = event.bookings ? event.bookings.filter(b => b.status === 'no_show').length : 0;
 
-  // Accurately compute base path to include repo name (/eventbook/) on GitHub Pages
   const basePath = window.location.pathname.endsWith('/') 
     ? window.location.pathname 
     : window.location.pathname + '/';
@@ -42,7 +41,12 @@ export async function renderPublishPage(container, { param: eventId }) {
           <p style="color:var(--text-muted); font-size:0.9rem;">${event.location_details || 'Online'} &bull; ${event.slot_duration_minutes}m slots</p>
         </div>
 
-        <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
+        <div style="display:flex; gap:0.5rem; flex-wrap:wrap; align-items:center;">
+          <!-- Edit Event Option -->
+          <a href="#/edit/${event.id}" class="btn btn-secondary btn-sm" style="display:inline-flex; align-items:center; gap:0.35rem;">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+            Edit Event
+          </a>
           <button id="btn-export-csv" class="btn btn-secondary btn-sm">Export CSV</button>
           <button id="btn-toggle-status" class="btn ${event.status === 'published' ? 'btn-danger' : 'btn-primary'} btn-sm">
             ${event.status === 'published' ? 'Unpublish' : 'Publish'}
@@ -50,7 +54,7 @@ export async function renderPublishPage(container, { param: eventId }) {
         </div>
       </div>
 
-      <!-- Participant Access Card with Inline Copy Button (Matching BRD Layout) -->
+      <!-- Participant Access Card with Inline Copy Button -->
       <div class="card" style="background:#f8fafc; border:1px solid var(--border-color); padding:1.5rem;">
         <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1.25rem;">
           <div style="flex:1; min-width:280px;">
@@ -102,7 +106,6 @@ export async function renderPublishPage(container, { param: eventId }) {
     </div>
   `;
 
-  // Inline Copy Button Action
   document.getElementById('btn-copy-inline').onclick = () => {
     const input = document.getElementById('input-booking-link');
     navigator.clipboard.writeText(input.value);
