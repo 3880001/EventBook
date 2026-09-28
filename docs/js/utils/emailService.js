@@ -1,6 +1,5 @@
 import { supabase } from '../supabaseClient.js';
 
-// Base application link helper
 function getAppBaseUrl() {
   const basePath = window.location.pathname.endsWith('/') 
     ? window.location.pathname 
@@ -8,7 +7,39 @@ function getAppBaseUrl() {
   return window.location.origin + basePath;
 }
 
-// 1. Send Cancellation Email with Technical Issue Message
+// 1. Dispatch Booking Confirmation Email
+export async function sendBookingConfirmationEmail(booking, event, participant, slot) {
+  const baseUrl = getAppBaseUrl();
+  const ticketUrl = baseUrl + '#/ticket/' + booking.booking_reference;
+  const recipient = participant.email;
+  const subject = 'Booking Confirmed: ' + event.name + ' (' + booking.booking_reference + ')';
+
+  let timeDisplay = 'Whole Day Session';
+  if (slot && slot.start_time) {
+    timeDisplay = new Date(slot.start_time).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
+  }
+
+  const bodyHtml = '<div style="font-family:sans-serif; max-width:600px; margin:0 auto; padding:20px; border:1px solid #e2e8f0; border-radius:10px;">'
+    + '<h2 style="color:#10b981; margin-top:0;">✓ Booking Confirmed!</h2>'
+    + '<p>Dear <strong>' + (participant.full_name || 'Participant') + '</strong>,</p>'
+    + '<p>Thank you for registering for <strong>' + event.name + '</strong>. Your reservation details are below:</p>'
+    + '<div style="background:#f8fafc; border:1px solid #cbd5e1; border-radius:8px; padding:15px; margin:15px 0;">'
+    + '<p style="margin:4px 0;"><strong>Booking Reference:</strong> <span style="font-family:monospace; color:#3b82f6; font-size:1.1rem; font-weight:bold;">' + booking.booking_reference + '</span></p>'
+    + '<p style="margin:4px 0;"><strong>Date & Time:</strong> ' + timeDisplay + '</p>'
+    + '<p style="margin:4px 0;"><strong>Location:</strong> ' + (event.location_details || 'Online') + '</p>'
+    + '</div>'
+    + '<div style="margin:25px 0; text-align:center;">'
+    + '<a href="' + ticketUrl + '" style="background:#3b82f6; color:#ffffff; padding:12px 24px; text-decoration:none; border-radius:6px; font-weight:bold; display:inline-block;">'
+    + '🎟️ View Digital Ticket & QR Code &rarr;'
+    + '</a>'
+    + '</div>'
+    + '<p style="color:#64748b; font-size:12px;">Please present your digital pass or reference code upon arrival.</p>'
+    + '</div>';
+
+  await logAndDispatchEmail(booking, event, recipient, 'confirmation', subject, bodyHtml, ticketUrl);
+}
+
+// 2. Dispatch Cancellation Email with Technical Issue Message
 export async function sendCancellationEmail(booking, event, participant) {
   const baseUrl = getAppBaseUrl();
   const rebookUrl = baseUrl + '#/book/' + event.slug;
@@ -18,7 +49,7 @@ export async function sendCancellationEmail(booking, event, participant) {
   const bodyHtml = '<div style="font-family:sans-serif; max-width:600px; margin:0 auto; padding:20px; border:1px solid #e2e8f0; border-radius:10px;">'
     + '<h2 style="color:#ef4444; margin-top:0;">Booking Cancelled</h2>'
     + '<p>Dear <strong>' + (participant.full_name || 'Participant') + '</strong>,</p>'
-    + '<div style="background:#fee2e2; border-left:4px solid #ef4444; padding:12px; margin:15px 0; border-radius:4px; color:#991b1b;">'
+    + '<div style="background:#fee2e2; border-left:4px solid #ef4444; padding:14px; margin:15px 0; border-radius:4px; color:#991b1b; font-weight:500;">'
     + 'Due to technical issue, your booking is cancelled, you can book a new timeslot.'
     + '</div>'
     + '<p><strong>Event:</strong> ' + event.name + '<br/>'
@@ -31,10 +62,10 @@ export async function sendCancellationEmail(booking, event, participant) {
     + '<p style="color:#64748b; font-size:12px;">If you have any questions, please contact the organizer.</p>'
     + '</div>';
 
-  await logAndDispatchEmail(booking, event, recipient, 'cancellation', subject, bodyHtml);
+  await logAndDispatchEmail(booking, event, recipient, 'cancellation', subject, bodyHtml, rebookUrl);
 }
 
-// 2. Send General Status Update Email (Confirmed, Attended, No Show, etc.)
+// 3. Dispatch Status Update Email
 export async function sendStatusUpdateEmail(booking, event, participant, newStatus) {
   const baseUrl = getAppBaseUrl();
   const ticketUrl = baseUrl + '#/ticket/' + booking.booking_reference;
@@ -56,10 +87,10 @@ export async function sendStatusUpdateEmail(booking, event, participant, newStat
     + '</div>'
     + '</div>';
 
-  await logAndDispatchEmail(booking, event, recipient, 'status_update', subject, bodyHtml);
+  await logAndDispatchEmail(booking, event, recipient, 'status_update', subject, bodyHtml, ticketUrl);
 }
 
-// 3. Send Interactive Final Reminder with One-Click Actions
+// 4. Dispatch Final Interactive Reminder with One-Click Actions
 export async function sendInteractiveReminderEmail(booking, event, participant) {
   const baseUrl = getAppBaseUrl();
   const lateUrl = baseUrl + '#/rsvp/' + booking.booking_reference + '/late';
@@ -91,42 +122,52 @@ export async function sendInteractiveReminderEmail(booking, event, participant) 
     + '</div>'
     + '</div>';
 
-  await logAndDispatchEmail(booking, event, recipient, 'reminder', subject, bodyHtml);
+  await logAndDispatchEmail(booking, event, recipient, 'reminder', subject, bodyHtml, hereUrl);
 }
 
-// Log email dispatch to Supabase and send via external provider
-async function logAndDispatchEmail(booking, event, recipientEmail, type, subject, bodyHtml) {
+// Core Email Dispatcher
+async function logAndDispatchEmail(booking, event, recipientEmail, type, subject, bodyHtml, actionUrl) {
   try {
-    // 1. Record log in database
+    // 1. Record in Supabase email_logs
     await supabase.from('email_logs').insert({
-      event_id: event.id,
-      booking_id: booking.id,
+      event_id: event?.id,
+      booking_id: booking?.id,
       recipient_email: recipientEmail,
       email_type: type,
       subject: subject,
+      body_html: bodyHtml,
       status: 'dispatched'
     });
 
-    // 2. Dispatch via Resend if API key is stored, or broadcast via Supabase Edge Function
-    const resendKey = localStorage.getItem('RESEND_API_KEY');
-    if (resendKey) {
-      await fetch('https://api.resend.com/emails', {
+    // 2. Dispatch live email via EmailJS if configured
+    const serviceId = localStorage.getItem('EMAILJS_SERVICE_ID');
+    const templateId = localStorage.getItem('EMAILJS_TEMPLATE_ID');
+    const publicKey = localStorage.getItem('EMAILJS_PUBLIC_KEY');
+
+    if (serviceId && templateId && publicKey) {
+      await fetch('https://api.emailjs.com/api/v1.0/email/send', {
         method: 'POST',
-        headers: {
-          'Authorization': 'Bearer ' + resendKey,
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          from: 'EventBook <notifications@resend.dev>',
-          to: [recipientEmail],
-          subject: subject,
-          html: bodyHtml
+          service_id: serviceId,
+          template_id: templateId,
+          user_id: publicKey,
+          template_params: {
+            to_email: recipientEmail,
+            to_name: recipientEmail.split('@')[0],
+            subject: subject,
+            event_name: event?.name || 'Event',
+            booking_ref: booking?.booking_reference || '',
+            message_html: bodyHtml,
+            action_url: actionUrl || ''
+          }
         })
       });
+      console.log('✅ Real email sent via EmailJS to: ' + recipientEmail);
     } else {
-      console.log('✉️ Email Dispatched to ' + recipientEmail + ': [' + subject + ']');
+      console.log('ℹ️ Email logged in database. To deliver live emails to inboxes, configure EmailJS keys in the Email Setup modal.');
     }
   } catch (err) {
-    console.error('Failed to dispatch email:', err);
+    console.error('Error dispatching email:', err);
   }
 }
