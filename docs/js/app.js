@@ -1,14 +1,14 @@
-import { Router } from './router.js?v=11';
-import { renderDashboard, renderMyEvents } from './views/dashboard.js?v=11';
-import { renderWizard } from './views/wizard.js?v=11';
-import { renderPublishPage } from './views/publish.js?v=11';
-import { renderBookingPage } from './views/booking.js?v=11';
-import { renderTicketPage } from './views/ticket.js?v=11';
-import { renderAdminDashboard } from './views/admin.js?v=11';
-import { renderAnalyticsPage } from './views/analytics.js?v=11';
-import { renderFeedbackPage } from './views/feedback.js?v=11';
-import { renderAuthPage } from './views/auth.js?v=11';
-import { supabase } from './supabaseClient.js?v=11';
+import { Router } from './router.js?v=12';
+import { renderDashboard, renderMyEvents } from './views/dashboard.js?v=12';
+import { renderWizard } from './views/wizard.js?v=12';
+import { renderPublishPage } from './views/publish.js?v=12';
+import { renderBookingPage } from './views/booking.js?v=12';
+import { renderTicketPage } from './views/ticket.js?v=12';
+import { renderAdminDashboard } from './views/admin.js?v=12';
+import { renderAnalyticsPage } from './views/analytics.js?v=12';
+import { renderFeedbackPage } from './views/feedback.js?v=12';
+import { renderAuthPage } from './views/auth.js?v=12';
+import { supabase } from './supabaseClient.js?v=12';
 
 // Route Registry separating Dashboard Analytics from My Events
 const routes = {
