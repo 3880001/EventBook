@@ -372,12 +372,25 @@ export async function renderWizard(container, { param: eventId }) {
 
         try {
           let savedEventId = eventId;
+          let finalSlug = formData.slug;
 
-          // Include passcode_hash safeguard
+          // Check if slug exists to avoid 409 Conflict
+          if (!isEdit) {
+            const { data: existingSlug } = await supabase
+              .from('events')
+              .select('id')
+              .eq('slug', finalSlug)
+              .maybeSingle();
+
+            if (existingSlug) {
+              finalSlug = finalSlug + '-' + Math.random().toString(36).substring(2, 6);
+            }
+          }
+
           const eventPayload = {
             organizer_id: user.id,
             name: formData.name,
-            slug: formData.slug,
+            slug: finalSlug,
             description: formData.description,
             location_details: formData.location_details,
             slot_duration_minutes: formData.is_full_day ? 480 : formData.slot_duration_minutes,
@@ -401,16 +414,19 @@ export async function renderWizard(container, { param: eventId }) {
             savedEventId = newEv.id;
           }
 
+          // Upsert event_dates
           await supabase.from('event_dates').delete().eq('event_id', savedEventId);
-          const { error: dateErr } = await supabase.from('event_dates').insert({
+          const { data: insertedDate, error: dateErr } = await supabase.from('event_dates').insert({
             event_id: savedEventId,
             event_date: formData.event_date,
             start_time: formData.is_full_day ? '09:00:00' : (formData.start_time + ':00'),
             end_time: formData.is_full_day ? '17:00:00' : (formData.end_time + ':00'),
             is_full_day: formData.is_full_day
-          });
+          }).select().single();
+
           if (dateErr) throw dateErr;
 
+          // Upsert custom_fields
           await supabase.from('event_custom_fields').delete().eq('event_id', savedEventId);
           if (formData.custom_fields.length > 0) {
             const cfInserts = formData.custom_fields.map((c, i) => ({
@@ -421,6 +437,57 @@ export async function renderWizard(container, { param: eventId }) {
               sort_order: i
             }));
             await supabase.from('event_custom_fields').insert(cfInserts);
+          }
+
+          // Generate Timeslots
+          await supabase.from('timeslots').delete().eq('event_id', savedEventId);
+          const slotsToInsert = [];
+          const tracks = Math.max(1, formData.parallel_tracks || 1);
+
+          if (formData.is_full_day) {
+            for (let tr = 1; tr <= tracks; tr++) {
+              slotsToInsert.push({
+                event_id: savedEventId,
+                event_date_id: insertedDate ? insertedDate.id : null,
+                start_time: formData.event_date + 'T09:00:00',
+                end_time: formData.event_date + 'T17:00:00',
+                track_number: tr,
+                status: 'available'
+              });
+            }
+          } else {
+            const [sHour, sMin] = formData.start_time.split(':').map(Number);
+            const [eHour, eMin] = formData.end_time.split(':').map(Number);
+            const duration = formData.slot_duration_minutes || 15;
+            const buffer = formData.buffer_minutes || 0;
+
+            let currentMinutes = sHour * 60 + sMin;
+            const endMinutes = eHour * 60 + eMin;
+
+            while (currentMinutes + duration <= endMinutes) {
+              const startH = String(Math.floor(currentMinutes / 60)).padStart(2, '0');
+              const startM = String(currentMinutes % 60).padStart(2, '0');
+              const endMinCalc = currentMinutes + duration;
+              const endH = String(Math.floor(endMinCalc / 60)).padStart(2, '0');
+              const endM = String(endMinCalc % 60).padStart(2, '0');
+
+              for (let tr = 1; tr <= tracks; tr++) {
+                slotsToInsert.push({
+                  event_id: savedEventId,
+                  event_date_id: insertedDate ? insertedDate.id : null,
+                  start_time: formData.event_date + 'T' + startH + ':' + startM + ':00',
+                  end_time: formData.event_date + 'T' + endH + ':' + endM + ':00',
+                  track_number: tr,
+                  status: 'available'
+                });
+              }
+
+              currentMinutes += duration + buffer;
+            }
+          }
+
+          if (slotsToInsert.length > 0) {
+            await supabase.from('timeslots').insert(slotsToInsert);
           }
 
           toast('Event saved successfully!', 'success');
