@@ -27,7 +27,7 @@ export class Router {
     const isAuthenticated = !!session;
 
     // Public routes that don't require organizer sign-in
-    const isPublicRoute = path.startsWith('/book') || path.startsWith('/feedback') || path === '/auth';
+    const isPublicRoute = path.startsWith('/book') || path.startsWith('/ticket') || path.startsWith('/feedback') || path === '/auth';
 
     // If user is at root with no hash, send to dashboard if logged in, or /auth if logged out
     if (!path || path === '/') {
