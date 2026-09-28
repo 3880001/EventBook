@@ -36,7 +36,7 @@ export async function sendBookingConfirmationEmail(booking, event, participant, 
     + '<p style="color:#64748b; font-size:12px;">Please present your digital pass or reference code upon arrival.</p>'
     + '</div>';
 
-  await logAndDispatchEmail(booking, event, recipient, 'confirmation', subject, bodyHtml, ticketUrl);
+  await logAndDispatchEmail(booking, event, recipient, participant.full_name, 'confirmation', subject, bodyHtml);
 }
 
 // 2. Dispatch Cancellation Email with Technical Issue Message
@@ -49,7 +49,7 @@ export async function sendCancellationEmail(booking, event, participant) {
   const bodyHtml = '<div style="font-family:sans-serif; max-width:600px; margin:0 auto; padding:20px; border:1px solid #e2e8f0; border-radius:10px;">'
     + '<h2 style="color:#ef4444; margin-top:0;">Booking Cancelled</h2>'
     + '<p>Dear <strong>' + (participant.full_name || 'Participant') + '</strong>,</p>'
-    + '<div style="background:#fee2e2; border-left:4px solid #ef4444; padding:14px; margin:15px 0; border-radius:4px; color:#991b1b; font-weight:500;">'
+    + '<div style="background:#fee2e2; border-left:4px solid #ef4444; padding:14px; margin:15px 0; border-radius:4px; color:#991b1b; font-weight:600;">'
     + 'Due to technical issue, your booking is cancelled, you can book a new timeslot.'
     + '</div>'
     + '<p><strong>Event:</strong> ' + event.name + '<br/>'
@@ -62,7 +62,7 @@ export async function sendCancellationEmail(booking, event, participant) {
     + '<p style="color:#64748b; font-size:12px;">If you have any questions, please contact the organizer.</p>'
     + '</div>';
 
-  await logAndDispatchEmail(booking, event, recipient, 'cancellation', subject, bodyHtml, rebookUrl);
+  await logAndDispatchEmail(booking, event, recipient, participant.full_name, 'cancellation', subject, bodyHtml);
 }
 
 // 3. Dispatch Status Update Email
@@ -87,7 +87,7 @@ export async function sendStatusUpdateEmail(booking, event, participant, newStat
     + '</div>'
     + '</div>';
 
-  await logAndDispatchEmail(booking, event, recipient, 'status_update', subject, bodyHtml, ticketUrl);
+  await logAndDispatchEmail(booking, event, recipient, participant.full_name, 'status_update', subject, bodyHtml);
 }
 
 // 4. Dispatch Final Interactive Reminder with One-Click Actions
@@ -122,52 +122,28 @@ export async function sendInteractiveReminderEmail(booking, event, participant) 
     + '</div>'
     + '</div>';
 
-  await logAndDispatchEmail(booking, event, recipient, 'reminder', subject, bodyHtml, hereUrl);
+  await logAndDispatchEmail(booking, event, recipient, participant.full_name, 'reminder', subject, bodyHtml);
 }
 
-// Core Email Dispatcher
-async function logAndDispatchEmail(booking, event, recipientEmail, type, subject, bodyHtml, actionUrl) {
+// Core Email Dispatcher via Supabase Brevo RPC
+async function logAndDispatchEmail(booking, event, recipientEmail, recipientName, type, subject, bodyHtml) {
   try {
-    // 1. Record in Supabase email_logs
-    await supabase.from('email_logs').insert({
-      event_id: event?.id,
-      booking_id: booking?.id,
-      recipient_email: recipientEmail,
-      email_type: type,
-      subject: subject,
-      body_html: bodyHtml,
-      status: 'dispatched'
+    const { data, error } = await supabase.rpc('send_brevo_email', {
+      p_recipient_email: recipientEmail,
+      p_recipient_name: recipientName || 'Participant',
+      p_subject: subject,
+      p_html_content: bodyHtml,
+      p_event_id: event?.id || null,
+      p_booking_id: booking?.id || null,
+      p_email_type: type
     });
 
-    // 2. Dispatch live email via EmailJS if configured
-    const serviceId = localStorage.getItem('EMAILJS_SERVICE_ID');
-    const templateId = localStorage.getItem('EMAILJS_TEMPLATE_ID');
-    const publicKey = localStorage.getItem('EMAILJS_PUBLIC_KEY');
-
-    if (serviceId && templateId && publicKey) {
-      await fetch('https://api.emailjs.com/api/v1.0/email/send', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          service_id: serviceId,
-          template_id: templateId,
-          user_id: publicKey,
-          template_params: {
-            to_email: recipientEmail,
-            to_name: recipientEmail.split('@')[0],
-            subject: subject,
-            event_name: event?.name || 'Event',
-            booking_ref: booking?.booking_reference || '',
-            message_html: bodyHtml,
-            action_url: actionUrl || ''
-          }
-        })
-      });
-      console.log('✅ Real email sent via EmailJS to: ' + recipientEmail);
+    if (error) {
+      console.error('Brevo email dispatch error:', error);
     } else {
-      console.log('ℹ️ Email logged in database. To deliver live emails to inboxes, configure EmailJS keys in the Email Setup modal.');
+      console.log('✉️ Email dispatched to Brevo:', data);
     }
   } catch (err) {
-    console.error('Error dispatching email:', err);
+    console.error('Error in logAndDispatchEmail:', err);
   }
 }
