@@ -41,7 +41,7 @@ export async function renderBookingPage(container, { param: slug }) {
     return;
   }
 
-  // 3. Render Main Workspace
+  // 3. Render Workspace
   await renderBookingWorkspace(container, event);
 }
 
@@ -79,7 +79,7 @@ function renderPasscodeGate(container, event, onUnlock) {
 async function renderBookingWorkspace(container, event) {
   let selectedSlot = null;
   let activeDateId = event.event_dates && event.event_dates[0] ? event.event_dates[0].id : null;
-  let activeTrack = 1;
+  let activeTrack = 'all'; // Default to "All Tracks" so participants see all available slots
 
   const isFullDayEvent = (event.event_dates && event.event_dates.some(d => d.is_full_day)) || (event.slot_duration_minutes >= 480);
 
@@ -100,9 +100,14 @@ async function renderBookingWorkspace(container, event) {
   let timeslots = await loadTimeslots();
 
   function render() {
+    // Filter slots by selected date and track
     const currentSlots = timeslots.filter(s => {
-      const matchDate = activeDateId ? s.event_date_id === activeDateId : true;
-      const matchTrack = s.track_number === activeTrack;
+      const matchDate = (!activeDateId || !s.event_date_id || event.event_dates?.length <= 1) 
+        ? true 
+        : (s.event_date_id === activeDateId);
+      const matchTrack = (activeTrack === 'all') 
+        ? true 
+        : (s.track_number === Number(activeTrack));
       return matchDate && matchTrack;
     });
 
@@ -116,24 +121,25 @@ async function renderBookingWorkspace(container, event) {
       for (let i = 0; i < event.event_dates.length; i++) {
         const d = event.event_dates[i];
         const btnClass = (d.id === activeDateId) ? 'btn-primary' : 'btn-secondary';
-        const formattedDate = new Date(d.event_date + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+        const formattedDate = new Date(d.event_date + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
         dateButtons += '<button class="btn ' + btnClass + ' btn-sm btn-filter-date" data-id="' + d.id + '">' + formattedDate + '</button>';
       }
       datesTabsHtml = '<div style="margin-bottom:1.25rem;"><label class="form-label">Select Date</label><div style="display:flex; gap:0.5rem; flex-wrap:wrap;">' + dateButtons + '</div></div>';
     }
 
-    // Build Parallel Tracks Filter Tabs
+    // Build Track Filter Tabs (with "All Tracks" default)
     let tracksTabsHtml = '';
-    if (event.parallel_tracks && event.parallel_tracks > 1) {
-      let trackButtons = '';
+    if (!isFullDayEvent && event.parallel_tracks && event.parallel_tracks > 1) {
+      const allClass = (activeTrack === 'all') ? 'btn-primary' : 'btn-secondary';
+      let trackButtons = '<button class="btn ' + allClass + ' btn-sm btn-filter-track" data-track="all">All Tracks</button>';
       for (let tr = 1; tr <= event.parallel_tracks; tr++) {
-        const btnClass = (tr === activeTrack) ? 'btn-primary' : 'btn-secondary';
+        const btnClass = (activeTrack === String(tr)) ? 'btn-primary' : 'btn-secondary';
         trackButtons += '<button class="btn ' + btnClass + ' btn-sm btn-filter-track" data-track="' + tr + '">Track ' + tr + '</button>';
       }
-      tracksTabsHtml = '<div style="margin-bottom:1.25rem;"><label class="form-label">Select Track</label><div style="display:flex; gap:0.5rem; flex-wrap:wrap;">' + trackButtons + '</div></div>';
+      tracksTabsHtml = '<div style="margin-bottom:1.25rem;"><label class="form-label">Filter by Track / Room</label><div style="display:flex; gap:0.5rem; flex-wrap:wrap;">' + trackButtons + '</div></div>';
     }
 
-    // Build Slots / Full Day Session Area
+    // Slots Display: Full-Day vs Standard Timeslots Grid
     let slotsDisplayHtml = '';
     if (isFullDayEvent) {
       const isBooked = currentSlots.length > 0 && currentSlots[0].status === 'booked';
@@ -162,7 +168,9 @@ async function renderBookingWorkspace(container, event) {
         + '<div>' + actionBtn + '</div>'
         + '</div></div>';
     } else if (currentSlots.length === 0) {
-      slotsDisplayHtml = '<div style="text-align:center; padding:2rem 1rem; color:var(--text-muted);"><p>No available timeslots found for this selection.</p></div>';
+      slotsDisplayHtml = '<div style="text-align:center; padding:2rem 1rem; color:var(--text-muted);">'
+        + '<p>No available timeslots found for this selection.</p>'
+        + '</div>';
     } else {
       let slotButtons = '';
       for (let i = 0; i < currentSlots.length; i++) {
@@ -175,15 +183,16 @@ async function renderBookingWorkspace(container, event) {
         const cursor = isBooked ? 'not-allowed' : 'pointer';
         const opacity = isBooked ? '0.5' : '1';
         const disabledAttr = isBooked ? 'disabled' : '';
-        const subText = isBooked ? 'Booked' : endTimeStr;
+        const trackTag = (event.parallel_tracks > 1 && slot.track_number) ? (' • T' + slot.track_number) : '';
+        const subText = isBooked ? 'Booked' : (endTimeStr + trackTag);
 
         slotButtons += '<button type="button" class="btn btn-slot ' + btnClass + '" data-slot-id="' + slot.id + '" ' + disabledAttr
-          + ' style="display:flex; flex-direction:column; align-items:center; justify-content:center; padding:0.6rem 0.4rem; border-radius:8px; font-size:0.825rem; font-weight:600; cursor:' + cursor + '; opacity:' + opacity + ';">'
+          + ' style="display:flex; flex-direction:column; align-items:center; justify-content:center; padding:0.65rem 0.5rem; border-radius:8px; font-size:0.85rem; font-weight:600; cursor:' + cursor + '; opacity:' + opacity + ';">'
           + '<span>' + startTimeStr + '</span>'
           + '<span style="font-size:0.75rem; opacity:0.85; font-weight:normal;">' + subText + '</span>'
           + '</button>';
       }
-      slotsDisplayHtml = '<div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap:0.6rem; margin-top:0.5rem;">' + slotButtons + '</div>';
+      slotsDisplayHtml = '<div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(135px, 1fr)); gap:0.6rem; margin-top:0.5rem;">' + slotButtons + '</div>';
     }
 
     // Build Custom Questions
@@ -258,7 +267,7 @@ async function renderBookingWorkspace(container, event) {
 
     document.querySelectorAll('.btn-filter-track').forEach(btn => {
       btn.onclick = () => {
-        activeTrack = Number(btn.dataset.track);
+        activeTrack = btn.dataset.track;
         selectedSlot = null;
         render();
       };
@@ -306,7 +315,6 @@ async function renderBookingWorkspace(container, event) {
         });
 
         try {
-          // Explicit system_participant_id generation
           const sysId = 'EB-' + Math.random().toString(36).substring(2, 8).toUpperCase();
           const { data: participant, error: partErr } = await supabase
             .from('participant_profiles')
@@ -321,7 +329,6 @@ async function renderBookingWorkspace(container, event) {
 
           if (partErr) throw partErr;
 
-          // Determine timeslot ID (valid UUID or null for full-day)
           let targetSlotId = (selectedSlot && selectedSlot.id && selectedSlot.id !== 'fullday-virtual') 
             ? selectedSlot.id 
             : (currentSlots[0] ? currentSlots[0].id : null);
@@ -360,7 +367,6 @@ async function renderBookingWorkspace(container, event) {
     }
   }
 
-  // Initial render
   render();
 
   // Clean real-time subscription
@@ -390,12 +396,11 @@ async function renderBookingWorkspace(container, event) {
 function renderConfirmationScreen(container, event, slot, bookingRef, participantName, activeDateObj) {
   let startStr = 'Whole Day Session';
   if (slot && slot.start_time) {
-    startStr = new Date(slot.start_time).toLocaleString([], { dateStyle: 'medium' });
+    startStr = new Date(slot.start_time).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
   } else if (activeDateObj && activeDateObj.event_date) {
     startStr = new Date(activeDateObj.event_date + 'T00:00:00').toLocaleDateString(undefined, { dateStyle: 'medium' });
   }
 
-  // Generate QR code encoding the live mobile ticket link
   const basePath = window.location.pathname.endsWith('/') 
     ? window.location.pathname 
     : window.location.pathname + '/';
@@ -419,7 +424,7 @@ function renderConfirmationScreen(container, event, slot, bookingRef, participan
     + '<span style="font-weight:600;">' + event.name + '</span>'
     + '</div>'
     + '<div style="display:flex; justify-content:space-between; margin-bottom:0.75rem;">'
-    + '<span style="color:var(--text-muted); font-size:0.85rem;">Date</span>'
+    + '<span style="color:var(--text-muted); font-size:0.85rem;">Date & Time</span>'
     + '<span style="font-weight:600;">' + startStr + '</span>'
     + '</div>'
     + '<div style="display:flex; justify-content:space-between;">'
