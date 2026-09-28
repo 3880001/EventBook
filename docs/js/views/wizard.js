@@ -72,7 +72,6 @@ export async function renderWizard(container, { param: eventId }) {
     let stepContent = '';
 
     if (currentStep === 1) {
-      // Step 1: Basic Information + Autocomplete Location
       stepContent = '<div class="card">'
         + '<h2 style="font-size:1.25rem; font-weight:700; margin-bottom:1.25rem;">Step 1: Event Details</h2>'
         + '<div class="form-group">'
@@ -88,8 +87,6 @@ export async function renderWizard(container, { param: eventId }) {
         + '<label class="form-label">Description</label>'
         + '<textarea id="w-description" class="form-control" rows="3" placeholder="Provide event instructions or details...">' + (formData.description || '') + '</textarea>'
         + '</div>'
-        
-        // Autocomplete Location Field
         + '<div class="form-group" style="position:relative;">'
         + '<label class="form-label">Location / Online Meeting Link</label>'
         + '<input type="text" id="w-location" class="form-control" autocomplete="off" placeholder="e.g. Tim Hortons, Ebenezer Rd or Google Meet link" value="' + (formData.location_details || '') + '" />'
@@ -97,14 +94,12 @@ export async function renderWizard(container, { param: eventId }) {
         + '<div id="location-preview" style="margin-top:0.45rem; font-size:0.85rem;"></div>'
         + '<small style="color:var(--text-muted);">Type an address for instant suggestions, or enter an online meeting link</small>'
         + '</div>'
-
         + '<div style="display:flex; justify-content:flex-end; margin-top:1.5rem;">'
         + '<button type="button" id="btn-next-step" class="btn btn-primary">Next: Timing & Capacity &rarr;</button>'
         + '</div>'
         + '</div>';
 
     } else if (currentStep === 2) {
-      // Step 2: Date, Time & Tracks
       stepContent = '<div class="card">'
         + '<h2 style="font-size:1.25rem; font-weight:700; margin-bottom:1.25rem;">Step 2: Timing & Capacity</h2>'
         + '<div class="form-group">'
@@ -151,7 +146,6 @@ export async function renderWizard(container, { param: eventId }) {
         + '</div>';
 
     } else if (currentStep === 3) {
-      // Step 3: Passcode, Reminders List & Custom Questions
       let remindersListHtml = '';
       const totalReminders = formData.reminders.length;
 
@@ -193,13 +187,11 @@ export async function renderWizard(container, { param: eventId }) {
 
       stepContent = '<div class="card">'
         + '<h2 style="font-size:1.25rem; font-weight:700; margin-bottom:1.25rem;">Step 3: Access, Reminders & Questions</h2>'
-        
         + '<div class="form-group">'
         + '<label class="form-label">Passcode Protection (Optional)</label>'
         + '<input type="text" id="w-passcode" class="form-control" placeholder="Leave empty for public access" value="' + (formData.passcode_plain || '') + '" />'
         + '<small style="color:var(--text-muted);">Participants must enter this passcode before choosing a slot</small>'
         + '</div>'
-
         + '<div class="card" style="background:#f8fafc; border:1px solid var(--border-color); padding:1.25rem; margin:1.5rem 0; border-radius:10px;">'
         + '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.75rem; flex-wrap:wrap; gap:0.5rem;">'
         + '<div>'
@@ -210,7 +202,6 @@ export async function renderWizard(container, { param: eventId }) {
         + '</div>'
         + '<div id="reminders-list-box">' + remindersListHtml + '</div>'
         + '</div>'
-
         + '<div class="form-group">'
         + '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">'
         + '<label class="form-label" style="margin:0;">Custom Registration Questions</label>'
@@ -218,7 +209,6 @@ export async function renderWizard(container, { param: eventId }) {
         + '</div>'
         + '<div id="cf-container">' + customFieldsHtml + '</div>'
         + '</div>'
-
         + '<div style="display:flex; justify-content:space-between; margin-top:2rem;">'
         + '<button type="button" id="btn-prev-step" class="btn btn-secondary">&larr; Back</button>'
         + '<button type="button" id="btn-save-event" class="btn btn-primary">' + (isEdit ? 'Update Event' : 'Save & Publish Event') + '</button>'
@@ -238,7 +228,6 @@ export async function renderWizard(container, { param: eventId }) {
   }
 
   function bindStepEvents() {
-    // Autocomplete Initialization on Step 1
     if (currentStep === 1) {
       const locInput = document.getElementById('w-location');
       const suggBox = document.getElementById('location-suggestions');
@@ -319,7 +308,6 @@ export async function renderWizard(container, { param: eventId }) {
       };
     }
 
-    // Reminders
     const btnAddReminder = document.getElementById('btn-add-reminder');
     if (btnAddReminder) {
       btnAddReminder.onclick = () => {
@@ -349,7 +337,6 @@ export async function renderWizard(container, { param: eventId }) {
       };
     });
 
-    // Custom Fields
     const btnAddCf = document.getElementById('btn-add-cf');
     if (btnAddCf) {
       btnAddCf.onclick = () => {
@@ -386,6 +373,7 @@ export async function renderWizard(container, { param: eventId }) {
         try {
           let savedEventId = eventId;
 
+          // Include passcode_hash safeguard
           const eventPayload = {
             organizer_id: user.id,
             name: formData.name,
@@ -396,6 +384,7 @@ export async function renderWizard(container, { param: eventId }) {
             buffer_minutes: formData.is_full_day ? 0 : formData.buffer_minutes,
             parallel_tracks: formData.parallel_tracks,
             passcode_plain: formData.passcode_plain,
+            passcode_hash: formData.passcode_plain || '',
             reminder_enabled: formData.reminders.length > 0,
             reminder_count: formData.reminders.length,
             reminder_frequency: formData.reminders[0]?.schedule || '24h',
