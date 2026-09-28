@@ -55,7 +55,7 @@ export async function renderPublishPage(container, { param: eventId }) {
         </div>
       </div>
 
-      <!-- Participant Access Card with Inline Copy Button -->
+      <!-- Participant Access Card with Inline Copy Buttons -->
       <div class="card" style="background:#f8fafc; border:1px solid var(--border-color); padding:1.5rem;">
         <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1.25rem;">
           <div style="flex:1; min-width:280px;">
@@ -64,13 +64,18 @@ export async function renderPublishPage(container, { param: eventId }) {
               <input type="text" id="input-booking-link" class="form-control" value="${publicBookingURL}" readonly style="background:#ffffff; font-family:monospace; font-size:0.9rem;" />
               <button id="btn-copy-inline" class="btn btn-secondary" style="white-space:nowrap; gap:0.35rem;">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-                Copy
+                Copy Link
               </button>
             </div>
             
-            <div style="margin-top:0.75rem; font-size:0.9rem; display:flex; align-items:center; gap:0.5rem;">
+            <!-- Passcode Display with Dedicated Copy Button -->
+            <div style="margin-top:0.85rem; font-size:0.9rem; display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
               <span style="color:var(--text-muted);">Passcode:</span>
-              <span style="font-family:monospace; font-weight:700; background:#e2e8f0; padding:2px 8px; border-radius:4px;">${event.passcode_plain || '******'}</span>
+              <span id="text-passcode-val" style="font-family:monospace; font-weight:700; background:#e2e8f0; padding:3px 10px; border-radius:4px; letter-spacing:0.5px;">${event.passcode_plain || '******'}</span>
+              <button id="btn-copy-passcode" class="btn btn-secondary btn-sm" style="display:inline-flex; align-items:center; gap:0.3rem; padding:0.25rem 0.6rem; font-size:0.8rem;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                Copy Passcode
+              </button>
             </div>
           </div>
 
@@ -107,12 +112,21 @@ export async function renderPublishPage(container, { param: eventId }) {
     </div>
   `;
 
-  // Inline Copy Button
+  // Copy Booking Link Button
   document.getElementById('btn-copy-inline').onclick = () => {
     const input = document.getElementById('input-booking-link');
     navigator.clipboard.writeText(input.value);
     toast('Booking link copied to clipboard!', 'success');
   };
+
+  // Copy Passcode Button
+  const btnCopyPasscode = document.getElementById('btn-copy-passcode');
+  if (btnCopyPasscode) {
+    btnCopyPasscode.onclick = () => {
+      navigator.clipboard.writeText(event.passcode_plain || '');
+      toast('Passcode copied to clipboard!', 'success');
+    };
+  }
 
   // Toggle Publish/Unpublish Status
   document.getElementById('btn-toggle-status').onclick = async () => {
