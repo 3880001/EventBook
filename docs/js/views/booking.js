@@ -234,13 +234,16 @@ async function renderBookingWorkspace(container, event, hasPasscode) {
       slotsDisplayHtml = '<div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(145px, 1fr)); gap:0.65rem; margin-top:0.5rem;">' + slotButtons + '</div>';
     }
 
-    // Custom Registration Questions
+    // Custom Registration Questions with Clear Required Indicators
     let customFieldsHtml = '';
     for (let i = 0; i < customFields.length; i++) {
       const cf = customFields[i];
+      const isReq = (cf.required === true || cf.required === 'true' || cf.required === 1);
+      const reqBadge = isReq ? ' <span style="color:#ef4444; font-weight:700;">* (Required)</span>' : ' <span style="color:var(--text-muted); font-size:0.8rem;">(Optional)</span>';
+
       customFieldsHtml += '<div class="form-group">'
-        + '<label class="form-label">' + cf.label + (cf.required ? ' *' : '') + '</label>'
-        + '<input type="' + (cf.field_type || 'text') + '" class="form-control custom-field-input" data-label="' + cf.label + '" ' + (cf.required ? 'required' : '') + ' />'
+        + '<label class="form-label" style="font-weight:600;">' + cf.label + reqBadge + '</label>'
+        + '<input type="' + (cf.field_type || 'text') + '" class="form-control custom-field-input" data-label="' + cf.label.replace(/"/g, '&quot;') + '" data-required="' + (isReq ? 'true' : 'false') + '" placeholder="Enter ' + cf.label.replace(/"/g, '&quot;') + '" ' + (isReq ? 'required' : '') + ' />'
         + '</div>';
     }
 
@@ -274,19 +277,19 @@ async function renderBookingWorkspace(container, event, hasPasscode) {
       + '</div>'
       + '<div class="card" id="booking-form-card" style="display:' + formDisplay + ';">'
       + '<h2 style="font-size:1.25rem; font-weight:600; margin-bottom:1.25rem;">Participant Information</h2>'
-      + '<form id="booking-submit-form">'
+      + '<form id="booking-submit-form" novalidate>'
       + '<div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">'
       + '<div class="form-group">'
-      + '<label class="form-label">Full Name *</label>'
+      + '<label class="form-label" style="font-weight:600;">Full Name <span style="color:#ef4444;">*</span></label>'
       + '<input type="text" id="p-fullname" class="form-control" placeholder="John Doe" required />'
       + '</div>'
       + '<div class="form-group">'
-      + '<label class="form-label">Email Address *</label>'
+      + '<label class="form-label" style="font-weight:600;">Email Address <span style="color:#ef4444;">*</span></label>'
       + '<input type="email" id="p-email" class="form-control" placeholder="john@example.com" required />'
       + '</div>'
       + '</div>'
       + '<div class="form-group">'
-      + '<label class="form-label">Phone Number</label>'
+      + '<label class="form-label">Phone Number <span style="color:var(--text-muted); font-size:0.8rem;">(Optional)</span></label>'
       + '<input type="tel" id="p-phone" class="form-control" placeholder="+1 555-0199" />'
       + '</div>'
       + customFieldsHtml
@@ -355,17 +358,62 @@ async function renderBookingWorkspace(container, event, hasPasscode) {
       form.onsubmit = async (e) => {
         e.preventDefault();
         const submitBtn = document.getElementById('btn-submit-booking');
+
+        const nameEl = document.getElementById('p-fullname');
+        const emailEl = document.getElementById('p-email');
+        const phoneEl = document.getElementById('p-phone');
+
+        const fullName = nameEl?.value.trim() || '';
+        const email = emailEl?.value.trim() || '';
+        const phone = phoneEl?.value.trim() || '';
+
+        // 1. Validate Base Fields
+        if (!fullName) {
+          toast('Please enter your full name.', 'danger');
+          if (nameEl) {
+            nameEl.style.borderColor = '#ef4444';
+            nameEl.focus();
+          }
+          return;
+        }
+        if (nameEl) nameEl.style.borderColor = '';
+
+        if (!email || !email.includes('@')) {
+          toast('Please enter a valid email address.', 'danger');
+          if (emailEl) {
+            emailEl.style.borderColor = '#ef4444';
+            emailEl.focus();
+          }
+          return;
+        }
+        if (emailEl) emailEl.style.borderColor = '';
+
+        // 2. Strict Custom Fields Validation
+        const customInputs = document.querySelectorAll('.custom-field-input');
+        const customResponses = {};
+
+        for (let i = 0; i < customInputs.length; i++) {
+          const inp = customInputs[i];
+          const isReq = (inp.dataset.required === 'true');
+          const label = inp.dataset.label || 'Question';
+          const val = inp.value.trim();
+
+          if (isReq && !val) {
+            toast('You are missing required information: ' + label, 'danger');
+            inp.style.borderColor = '#ef4444';
+            inp.focus();
+            return;
+          }
+
+          inp.style.borderColor = '';
+          if (val) {
+            customResponses[label] = val;
+          }
+        }
+
+        // 3. All Validations Passed - Proceed with Booking
         submitBtn.disabled = true;
         submitBtn.innerText = 'Securing Booking...';
-
-        const fullName = document.getElementById('p-fullname').value.trim();
-        const email = document.getElementById('p-email').value.trim();
-        const phone = document.getElementById('p-phone').value.trim();
-
-        const customResponses = {};
-        document.querySelectorAll('.custom-field-input').forEach(inp => {
-          customResponses[inp.dataset.label] = inp.value.trim();
-        });
 
         try {
           const sysId = 'EB-' + Math.random().toString(36).substring(2, 8).toUpperCase();
