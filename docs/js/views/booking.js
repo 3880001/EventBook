@@ -17,16 +17,22 @@ export async function renderBookingPage(container, { param: slug }) {
     .single();
 
   if (eventErr || !event) {
-    container.innerHTML = '<div class="card" style="text-align:center; padding:3rem 1rem;"><h2 style="font-size:1.5rem; font-weight:700;">Event Not Found</h2><p style="color:var(--text-muted); margin-top:0.5rem;">This event may have been removed or the URL is incorrect.</p></div>';
+    container.innerHTML = '<div class="card" style="text-align:center; padding:3rem 1rem;">'
+      + '<h2 style="font-size:1.5rem; font-weight:700;">Event Not Found</h2>'
+      + '<p style="color:var(--text-muted); margin-top:0.5rem;">This event may have been removed or the URL is incorrect.</p>'
+      + '</div>';
     return;
   }
 
   if (event.status !== 'published') {
-    container.innerHTML = '<div class="card" style="text-align:center; padding:3rem 1rem;"><h2 style="font-size:1.5rem; font-weight:700;">Event Unavailable</h2><p style="color:var(--text-muted); margin-top:0.5rem;">This event is currently in draft mode or unpublished.</p></div>';
+    container.innerHTML = '<div class="card" style="text-align:center; padding:3rem 1rem;">'
+      + '<h2 style="font-size:1.5rem; font-weight:700;">Event Unavailable</h2>'
+      + '<p style="color:var(--text-muted); margin-top:0.5rem;">This event is currently in draft mode or unpublished.</p>'
+      + '</div>';
     return;
   }
 
-  // 2. Check Passcode Protection Gate
+  // 2. Passcode Gate Check
   const passcodeStorageKey = 'passcode_unlocked_' + event.id;
   const isUnlocked = !event.passcode_plain || sessionStorage.getItem(passcodeStorageKey) === 'true';
 
@@ -103,7 +109,7 @@ async function renderBookingWorkspace(container, event) {
     const customFields = event.event_custom_fields || [];
     const activeDateObj = (event.event_dates && event.event_dates.find(d => d.id === activeDateId)) || (event.event_dates && event.event_dates[0]);
 
-    // Build Date Tabs
+    // Build Date Filter Tabs
     let datesTabsHtml = '';
     if (event.event_dates && event.event_dates.length > 1) {
       let dateButtons = '';
@@ -116,7 +122,7 @@ async function renderBookingWorkspace(container, event) {
       datesTabsHtml = '<div style="margin-bottom:1.25rem;"><label class="form-label">Select Date</label><div style="display:flex; gap:0.5rem; flex-wrap:wrap;">' + dateButtons + '</div></div>';
     }
 
-    // Build Track Tabs
+    // Build Parallel Tracks Filter Tabs
     let tracksTabsHtml = '';
     if (event.parallel_tracks && event.parallel_tracks > 1) {
       let trackButtons = '';
@@ -127,7 +133,7 @@ async function renderBookingWorkspace(container, event) {
       tracksTabsHtml = '<div style="margin-bottom:1.25rem;"><label class="form-label">Select Track</label><div style="display:flex; gap:0.5rem; flex-wrap:wrap;">' + trackButtons + '</div></div>';
     }
 
-    // Build Slots Content
+    // Build Slots / Full Day Session Area
     let slotsDisplayHtml = '';
     if (isFullDayEvent) {
       const isBooked = currentSlots.length > 0 && currentSlots[0].status === 'booked';
@@ -300,9 +306,16 @@ async function renderBookingWorkspace(container, event) {
         });
 
         try {
+          // Explicit system_participant_id generation
+          const sysId = 'EB-' + Math.random().toString(36).substring(2, 8).toUpperCase();
           const { data: participant, error: partErr } = await supabase
             .from('participant_profiles')
-            .upsert({ email, full_name: fullName, phone }, { onConflict: 'email' })
+            .upsert({
+              email,
+              full_name: fullName,
+              phone,
+              system_participant_id: sysId
+            }, { onConflict: 'email' })
             .select()
             .single();
 
@@ -345,7 +358,7 @@ async function renderBookingWorkspace(container, event) {
   // Initial render
   render();
 
-  // Realtime channel
+  // Clean real-time subscription
   const channelName = 'realtime_slots_' + event.id + '_' + Date.now();
   supabase.getChannels().forEach(ch => {
     if (ch.topic.includes(event.id)) supabase.removeChannel(ch);
