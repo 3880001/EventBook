@@ -7,8 +7,6 @@ export async function renderBookingPage(container, { param: slug }) {
     return;
   }
 
-  container.innerHTML = '<div class="loader-center"><div class="spinner"></div></div>';
-
   // 1. Fetch Event by Slug
   const { data: event, error: eventErr } = await supabase
     .from('events')
@@ -24,7 +22,7 @@ export async function renderBookingPage(container, { param: slug }) {
     container.innerHTML = `
       <div class="card" style="text-align:center; padding:3rem 1rem;">
         <h2 style="font-size:1.5rem; font-weight:700;">Event Not Found</h2>
-        <p style="color:var(--text-muted); margin-top:0.5rem;">This event may have been removed or the URL is incorrect.</p>
+        <p style="color:var(--text-muted); margin-top:0.5rem;">This event may have been deleted or the link is incorrect.</p>
       </div>
     `;
     return;
@@ -171,7 +169,6 @@ async function renderBookingWorkspace(container, event) {
 
           <!-- SLOTS DISPLAY -->
           ${isFullDayEvent ? `
-            <!-- Whole Day Session Presentation -->
             <div style="background:#f8fafc; border:2px dashed var(--border-color); border-radius:12px; padding:1.5rem; margin-top:0.5rem;">
               <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem;">
                 <div>
@@ -203,7 +200,6 @@ async function renderBookingWorkspace(container, event) {
               </div>
             </div>
           ` : `
-            <!-- Standard Timeslot Buttons Grid -->
             ${currentSlots.length === 0 ? `
               <div style="text-align:center; padding:2rem 1rem; color:var(--text-muted);">
                 <p>No available timeslots found for this selection.</p>
@@ -218,7 +214,7 @@ async function renderBookingWorkspace(container, event) {
 
                   return `
                     <button 
-                      type="button"
+                      type="button" 
                       class="btn btn-slot ${isSelected ? 'btn-primary' : isBooked ? 'btn-slot-booked' : 'btn-secondary'}" 
                       data-slot-id="${slot.id}"
                       ${isBooked ? 'disabled' : ''}
@@ -276,10 +272,10 @@ async function renderBookingWorkspace(container, event) {
       </div>
     `;
 
-    bindActions(currentSlots);
+    bindActions(currentSlots, activeDateObj);
   }
 
-  function bindActions(currentSlots) {
+  function bindActions(currentSlots, activeDateObj) {
     // Date filter click
     document.querySelectorAll('.btn-filter-date').forEach(btn => {
       btn.onclick = () => {
@@ -352,14 +348,14 @@ async function renderBookingWorkspace(container, event) {
 
           if (partErr) throw partErr;
 
-          // 2. Resolve timeslot ID (fallback if virtual full day slot)
+          // 2. Resolve slot ID
           let targetSlotId = selectedSlot.id;
           if (targetSlotId === 'fullday-virtual' || !targetSlotId) {
             const freshSlots = await loadTimeslots();
             targetSlotId = freshSlots[0]?.id;
           }
 
-          // 3. Generate Reference & Create Booking
+          // 3. Generate Reference & Insert Booking
           const bookingRef = 'EB-' + Math.random().toString(36).substring(2, 8).toUpperCase();
           const { error: bookErr } = await supabase
             .from('bookings')
