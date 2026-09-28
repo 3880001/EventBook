@@ -1,17 +1,18 @@
-import { Router } from './router.js?v=3';
-import { renderDashboard } from './views/dashboard.js?v=3';
-import { renderWizard } from './views/wizard.js?v=3';
-import { renderPublishPage } from './views/publish.js?v=3';
-import { renderBookingPage } from './views/booking.js?v=3';
-import { renderAdminDashboard } from './views/admin.js?v=3';
-import { renderAnalyticsPage } from './views/analytics.js?v=3';
-import { renderFeedbackPage } from './views/feedback.js?v=3';
-import { renderAuthPage } from './views/auth.js?v=3';
-import { supabase } from './supabaseClient.js?v=3';
+import { Router } from './router.js?v=4';
+import { renderDashboard } from './views/dashboard.js?v=4';
+import { renderWizard } from './views/wizard.js?v=4';
+import { renderPublishPage } from './views/publish.js?v=4';
+import { renderBookingPage } from './views/booking.js?v=4';
+import { renderTicketPage } from './views/ticket.js?v=4';
+import { renderAdminDashboard } from './views/admin.js?v=4';
+import { renderAnalyticsPage } from './views/analytics.js?v=4';
+import { renderFeedbackPage } from './views/feedback.js?v=4';
+import { renderAuthPage } from './views/auth.js?v=4';
+import { supabase } from './supabaseClient.js?v=4';
 
 const appRoot = document.getElementById('app-root');
 
-// Route Registry supporting both standard and parameterized hash routes
+// Route Registry supporting participant ticket URLs
 const routes = {
   '/auth': (root) => renderAuthPage(root),
   '/dashboard': (root) => renderDashboard(root),
@@ -20,6 +21,7 @@ const routes = {
   '/edit/:id': (root, ctx) => renderWizard(root, ctx),
   '/publish/:id': (root, ctx) => renderPublishPage(root, ctx),
   '/book/:slug': (root, ctx) => renderBookingPage(root, ctx),
+  '/ticket/:ref': (root, ctx) => renderTicketPage(root, ctx),
   '/analytics/:id': (root, ctx) => renderAnalyticsPage(root, ctx),
   '/feedback/:id': (root, ctx) => renderFeedbackPage(root, ctx),
   '/admin': (root) => renderAdminDashboard(root)
