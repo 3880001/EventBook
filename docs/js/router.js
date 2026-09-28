@@ -1,92 +1,71 @@
 import { supabase } from './supabaseClient.js';
 
 export class Router {
-  constructor(routes, rootElement) {
+  constructor(routes, container) {
     this.routes = routes;
-    this.root = rootElement;
+    this.container = container;
+    this.init();
+  }
 
-    // Listen for hash changes
+  init() {
     window.addEventListener('hashchange', () => this.handleRoute());
-
-    // Trigger immediately if document is already loaded or interactive
-    if (document.readyState === 'complete' || document.readyState === 'interactive') {
-      setTimeout(() => this.handleRoute(), 0);
-    } else {
-      window.addEventListener('DOMContentLoaded', () => this.handleRoute());
-      window.addEventListener('load', () => this.handleRoute());
+    window.addEventListener('load', () => this.handleRoute());
+    if (!window.location.hash) {
+      window.location.hash = '#/dashboard';
     }
   }
 
   async handleRoute() {
-    const rawHash = window.location.hash.slice(1);
-    const [path, queryString] = rawHash.split('?');
-    const params = new URLSearchParams(queryString || '');
-
-    // Check auth status
-    const { data: { session } } = await supabase.auth.getSession();
-    const isAuthenticated = !!session;
+    const fullHash = window.location.hash.slice(1) || '/dashboard';
+    const [path, queryString] = fullHash.split('?');
+    const queryParams = new URLSearchParams(queryString || '');
 
     // Public routes that don't require organizer sign-in
-    const isPublicRoute = path.startsWith('/book') || path.startsWith('/ticket') || path.startsWith('/feedback') || path === '/auth';
+    const isPublicRoute = path.startsWith('/book') || path.startsWith('/ticket') || path.startsWith('/rsvp') || path.startsWith('/feedback') || path === '/auth';
 
-    // If user is at root with no hash, send to dashboard if logged in, or /auth if logged out
-    if (!path || path === '/') {
-      window.location.hash = isAuthenticated ? '#/dashboard' : '#/auth';
-      return;
-    }
+    const { data: { session } } = await supabase.auth.getSession();
 
-    // Protect organizer routes
-    if (!isAuthenticated && !isPublicRoute) {
+    if (!session && !isPublicRoute) {
       window.location.hash = '#/auth';
       return;
     }
 
-    // Redirect away from auth if already logged in
-    if (isAuthenticated && path === '/auth') {
+    if (session && path === '/auth') {
       window.location.hash = '#/dashboard';
       return;
     }
 
-    // Match route
-    let matchedHandler = this.routes[path];
-    let routeParam = null;
+    // Dynamic Route Matching
+    for (const [routePattern, handler] of Object.entries(this.routes)) {
+      const patternParts = routePattern.split('/').filter(Boolean);
+      const pathParts = path.split('/').filter(Boolean);
 
-    if (!matchedHandler) {
-      for (const pattern in this.routes) {
-        if (pattern.includes(':')) {
-          const regex = new RegExp('^' + pattern.replace(/:[^\s/]+/g, '([\\w-]+)') + '$');
-          const match = path.match(regex);
-          if (match) {
-            matchedHandler = this.routes[pattern];
-            routeParam = match[1];
+      if (patternParts.length === pathParts.length) {
+        let match = true;
+        let param = null;
+        let params = {};
+
+        for (let i = 0; i < patternParts.length; i++) {
+          if (patternParts[i].startsWith(':')) {
+            const paramName = patternParts[i].slice(1);
+            params[paramName] = decodeURIComponent(pathParts[i]);
+            if (!param) param = decodeURIComponent(pathParts[i]);
+          } else if (patternParts[i] !== pathParts[i]) {
+            match = false;
             break;
           }
+        }
+
+        if (match) {
+          handler(this.container, { param, params, query: queryParams });
+          return;
         }
       }
     }
 
-    if (matchedHandler) {
-      this.updateActiveNav(path);
-      this.root.innerHTML = '<div class="loader-center"><div class="spinner"></div></div>';
-      try {
-        await matchedHandler(this.root, { param: routeParam, query: params });
-      } catch (err) {
-        console.error('Route render error:', err);
-        this.root.innerHTML = `<div class="card"><h2 style="color:var(--danger)">Rendering Error</h2><p>${err.message}</p></div>`;
-      }
-    } else {
-      this.root.innerHTML = '<div class="card"><h2>404 - Page Not Found</h2><p>The requested view does not exist.</p><a href="#/dashboard" class="btn btn-primary" style="margin-top:1rem;">Back to Home</a></div>';
+    // Default route fallback
+    if (this.routes['/dashboard']) {
+      this.routes['/dashboard'](this.container, { query: queryParams });
     }
-  }
-
-  updateActiveNav(currentPath) {
-    document.querySelectorAll('[data-page]').forEach((el) => {
-      const page = el.getAttribute('data-page');
-      if (currentPath.includes(page)) {
-        el.classList.add('active');
-      } else {
-        el.classList.remove('active');
-      }
-    });
   }
 }
