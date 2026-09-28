@@ -1,17 +1,17 @@
-import { Router } from './router.js';
-import { renderDashboard } from './views/dashboard.js';
-import { renderWizard } from './views/wizard.js';
-import { renderPublishPage } from './views/publish.js';
-import { renderBookingPage } from './views/booking.js';
-import { renderAdminDashboard } from './views/admin.js';
-import { renderAnalyticsPage } from './views/analytics.js';
-import { renderFeedbackPage } from './views/feedback.js';
-import { renderAuthPage } from './views/auth.js';
-import { supabase } from './supabaseClient.js';
+import { Router } from './router.js?v=2';
+import { renderDashboard } from './views/dashboard.js?v=2';
+import { renderWizard } from './views/wizard.js?v=2';
+import { renderPublishPage } from './views/publish.js?v=2';
+import { renderBookingPage } from './views/booking.js?v=2';
+import { renderAdminDashboard } from './views/admin.js?v=2';
+import { renderAnalyticsPage } from './views/analytics.js?v=2';
+import { renderFeedbackPage } from './views/feedback.js?v=2';
+import { renderAuthPage } from './views/auth.js?v=2';
+import { supabase } from './supabaseClient.js?v=2';
 
 const appRoot = document.getElementById('app-root');
 
-// Route Registry supporting both /create and /edit/:id
+// Route Registry supporting both standard and parameterized hash routes
 const routes = {
   '/auth': (root) => renderAuthPage(root),
   '/dashboard': (root) => renderDashboard(root),
@@ -25,6 +25,7 @@ const routes = {
   '/admin': (root) => renderAdminDashboard(root)
 };
 
+// Initialize Hash Router
 new Router(routes, appRoot);
 
 // Auth state tracking & Top Nav Header Button
