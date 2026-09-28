@@ -11,10 +11,9 @@ export async function renderRsvpPage(container, { param: bookingRef, query }) {
 
   container.innerHTML = '<div class="loader-center"><div class="spinner"></div></div>';
 
-  // 1. Fetch Booking, Timeslots, Event, and Event Dates
   const { data: booking, error } = await supabase
     .from('bookings')
-    .select('id, booking_reference, status, attendance_confirmed, created_at, timeslot_id, events ( id, name, slug, location_details, event_dates (*) ), timeslots ( id, start_time, end_time ), participant_profiles ( full_name, email )')
+    .select('id, booking_reference, status, attendance_confirmed, created_at, timeslot_id, events ( id, name, slug, location_details, slot_duration_minutes, event_dates (*) ), timeslots ( id, start_time, end_time ), participant_profiles ( full_name, email )')
     .eq('booking_reference', bookingRef)
     .single();
 
@@ -30,50 +29,36 @@ export async function renderRsvpPage(container, { param: bookingRef, query }) {
   const participant = booking.participant_profiles;
   const now = new Date();
 
-  // 2. Check if the event or appointment session is in the past
-  let isEventPast = false;
-  let sessionEndTime = null;
-
+  // Check if session has concluded
+  let endTime = null;
   if (booking.timeslots && booking.timeslots.end_time) {
-    sessionEndTime = new Date(booking.timeslots.end_time);
+    endTime = new Date(booking.timeslots.end_time);
   } else if (booking.timeslots && booking.timeslots.start_time) {
-    // If no end time, assume 1 hour duration
-    sessionEndTime = new Date(new Date(booking.timeslots.start_time).getTime() + 60 * 60 * 1000);
-  } else if (event && event.event_dates && event.event_dates[0]) {
+    const dur = event?.slot_duration_minutes || 15;
+    endTime = new Date(new Date(booking.timeslots.start_time).getTime() + dur * 60 * 1000);
+  } else if (event?.event_dates && event.event_dates[0]) {
     const ed = event.event_dates[0];
-    const endTimeStr = ed.end_time || '23:59:59';
-    sessionEndTime = new Date(ed.event_date + 'T' + endTimeStr);
+    endTime = new Date(ed.event_date + 'T' + (ed.end_time || '17:00:00'));
   }
 
-  if (sessionEndTime && sessionEndTime < now) {
-    isEventPast = true;
-  }
+  const isPast = endTime ? (now > endTime) : false;
 
-  // 3. IF EVENT IS PAST: Strictly LOCK modifications and show historical record
-  if (isEventPast) {
+  // If past: strictly reject any update
+  if (isPast) {
     const currentStatus = booking.attendance_confirmed ? 'attended' : booking.status;
-    const formattedEndTime = sessionEndTime 
-      ? sessionEndTime.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
-      : 'Past Date';
-
-    container.innerHTML = '<div style="max-width:520px; margin:3rem auto; padding:0 1rem;">'
+    container.innerHTML = '<div style="max-width:500px; margin:3rem auto; padding:0 1rem;">'
       + '<div class="card" style="text-align:center; padding:2.5rem 1.5rem; border-top:5px solid #64748b; border-radius:14px;">'
-      + '<div style="display:inline-flex; align-items:center; justify-content:center; width:56px; height:56px; border-radius:50%; background:#f1f5f9; color:#475569; font-size:1.5rem; margin-bottom:1rem;">'
-      + '🔒'
-      + '</div>'
+      + '<div style="font-size:2rem; margin-bottom:0.75rem;">🔒</div>'
       + '<h1 style="font-size:1.5rem; font-weight:700; margin-bottom:0.35rem;">Event Concluded</h1>'
       + '<div style="display:inline-block; background:#e2e8f0; color:#334155; font-size:0.8rem; font-weight:700; padding:3px 10px; border-radius:6px; margin-bottom:1rem; text-transform:uppercase;">'
       + 'Attendance & Check-in Locked'
       + '</div>'
       + '<p style="color:var(--text-muted); font-size:0.9rem; line-height:1.5;">'
-      + 'This event concluded on <strong>' + formattedEndTime + '</strong>. Attendance check-ins and cancellations are closed for past sessions.'
+      + 'This session has already taken place. Attendance status and cancellations cannot be updated for past events.'
       + '</p>'
       + '<div style="background:#f8fafc; border:1px solid var(--border-color); border-radius:10px; padding:1.25rem; margin:1.5rem 0; text-align:left; font-size:0.9rem;">'
       + '<div style="display:flex; justify-content:space-between; margin-bottom:0.5rem;">'
-      + '<span style="color:var(--text-muted);">Participant:</span><strong>' + (participant?.full_name || 'Guest') + '</strong>'
-      + '</div>'
-      + '<div style="display:flex; justify-content:space-between; margin-bottom:0.5rem;">'
-      + '<span style="color:var(--text-muted);">Event:</span><span style="font-weight:600;">' + (event?.name || 'Event') + '</span>'
+      + '<span style="color:var(--text-muted);">Event:</span><strong>' + (event?.name || 'Event') + '</strong>'
       + '</div>'
       + '<div style="display:flex; justify-content:space-between; margin-bottom:0.5rem;">'
       + '<span style="color:var(--text-muted);">Ref:</span><span style="font-family:monospace; font-weight:700;">' + bookingRef + '</span>'
@@ -83,16 +68,13 @@ export async function renderRsvpPage(container, { param: bookingRef, query }) {
       + '<span class="badge" style="background:#e2e8f0; color:#334155; font-weight:700; text-transform:uppercase;">' + currentStatus + '</span>'
       + '</div>'
       + '</div>'
-      + '<div style="display:flex; gap:0.75rem; justify-content:center; flex-wrap:wrap;">'
-      + '<a href="#/ticket/' + bookingRef + '" class="btn btn-secondary btn-sm" style="text-decoration:none;">View Archived Ticket</a>'
-      + '<a href="#/events" class="btn btn-primary btn-sm" style="text-decoration:none;">Go to My Events</a>'
-      + '</div>'
+      + '<a href="#/ticket/' + bookingRef + '" class="btn btn-secondary btn-sm" style="text-decoration:none;">View Digital Pass</a>'
       + '</div>'
       + '</div>';
     return;
   }
 
-  // 4. ACTIVE / UPCOMING EVENT: Process Participant Action
+  // Active / Upcoming: Process Status Update
   let title = '';
   let message = '';
   let badgeColor = 'var(--primary)';
@@ -119,7 +101,6 @@ export async function renderRsvpPage(container, { param: bookingRef, query }) {
     showRebook = true;
   }
 
-  // Update in Supabase
   await supabase
     .from('bookings')
     .update({
@@ -141,7 +122,7 @@ export async function renderRsvpPage(container, { param: bookingRef, query }) {
       + 'View Ticket Details'
       + '</a>';
 
-  container.innerHTML = '<div style="max-width:520px; margin:3rem auto; padding:0 1rem;">'
+  container.innerHTML = '<div style="max-width:500px; margin:3rem auto; padding:0 1rem;">'
     + '<div class="card" style="text-align:center; padding:2.5rem 1.5rem; border-top:5px solid ' + badgeColor + '; border-radius:14px;">'
     + '<h1 style="font-size:1.6rem; font-weight:700; margin-bottom:0.5rem;">' + title + '</h1>'
     + '<p style="color:var(--text-muted); font-size:0.95rem; line-height:1.5;">' + message + '</p>'
