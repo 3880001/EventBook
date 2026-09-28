@@ -1,5 +1,6 @@
 import { supabase } from '../supabaseClient.js';
 import { toast, generateQRCodeDataURI } from '../utils/ui.js';
+import { sendCancellationEmail, sendStatusUpdateEmail } from '../utils/emailService.js';
 
 export async function renderPublishPage(container, { param: eventId }) {
   container.innerHTML = '<div class="loader-center"><div class="spinner"></div></div>';
@@ -38,7 +39,7 @@ export async function renderPublishPage(container, { param: eventId }) {
 
   function renderView() {
     // 3. Compute Metrics
-    const confirmedCount = bookingsList.filter(b => b.status === 'confirmed' || b.status === 'attended').length;
+    const confirmedCount = bookingsList.filter(b => b.status === 'confirmed' || b.status === 'attended' || b.status === 'running_late' || b.status === 'arrived').length;
     const cancelledCount = bookingsList.filter(b => b.status === 'cancelled').length;
     const noShowCount = bookingsList.filter(b => b.status === 'no_show').length;
 
@@ -89,15 +90,7 @@ export async function renderPublishPage(container, { param: eventId }) {
           customInfoHtml = entries.map(([k, v]) => '<div style="font-size:0.8rem;"><strong>' + k + ':</strong> ' + v + '</div>').join('');
         }
 
-        // Status badge color
         const currentStatus = b.attendance_confirmed ? 'attended' : b.status;
-        const statusBadgeClass = (currentStatus === 'attended') 
-          ? 'badge-success' 
-          : (currentStatus === 'cancelled') 
-            ? 'badge-danger' 
-            : (currentStatus === 'no_show') 
-              ? 'badge-warning' 
-              : 'badge-primary';
 
         tableRowsHtml += '<tr style="border-bottom:1px solid var(--border-color);">'
           // Booking Ref
@@ -126,13 +119,14 @@ export async function renderPublishPage(container, { param: eventId }) {
           // Status & Actions
           + '<td style="padding:0.85rem 0.5rem; text-align:right; white-space:nowrap;">'
           + '<div style="display:inline-flex; align-items:center; gap:0.5rem;">'
-          + '<select class="form-control form-control-sm select-booking-status" data-id="' + b.id + '" data-slot-id="' + (b.timeslot_id || '') + '" style="font-size:0.8rem; padding:0.25rem 0.5rem; width:125px; border-radius:6px; font-weight:600;">'
+          + '<select class="form-control form-control-sm select-booking-status" data-id="' + b.id + '" data-slot-id="' + (b.timeslot_id || '') + '" style="font-size:0.8rem; padding:0.25rem 0.5rem; width:135px; border-radius:6px; font-weight:600;">'
           + '<option value="confirmed"' + (currentStatus === 'confirmed' ? ' selected' : '') + '>Confirmed</option>'
-          + '<option value="attended"' + (currentStatus === 'attended' ? ' selected' : '') + '>✓ Attended</option>'
+          + '<option value="attended"' + (currentStatus === 'attended' || currentStatus === 'arrived' ? ' selected' : '') + '>✓ Attended</option>'
+          + '<option value="running_late"' + (currentStatus === 'running_late' ? ' selected' : '') + '>🟡 Running Late</option>'
           + '<option value="no_show"' + (currentStatus === 'no_show' ? ' selected' : '') + '>No Show</option>'
           + '<option value="cancelled"' + (currentStatus === 'cancelled' ? ' selected' : '') + '>Cancelled</option>'
           + '</select>'
-          + '<button type="button" class="btn btn-sm btn-delete-booking" data-id="' + b.id + '" data-slot-id="' + (b.timeslot_id || '') + '" data-ref="' + b.booking_reference + '" title="Delete booking" style="background:#fee2e2; color:#ef4444; border:1px solid #fca5a5; padding:0.25rem 0.5rem; border-radius:6px; cursor:pointer;">'
+          + '<button type="button" class="btn btn-sm btn-delete-booking" data-id="' + b.id + '" data-slot-id="' + (b.timeslot_id || '') + '" data-ref="' + b.booking_reference + '" title="Cancel & Delete booking" style="background:#fee2e2; color:#ef4444; border:1px solid #fca5a5; padding:0.25rem 0.5rem; border-radius:6px; cursor:pointer;">'
           + '🗑️'
           + '</button>'
           + '</div>'
@@ -253,7 +247,6 @@ export async function renderPublishPage(container, { param: eventId }) {
   }
 
   function bindInteractions() {
-    // Copy Booking Link
     const copyLinkBtn = document.getElementById('btn-copy-inline');
     if (copyLinkBtn) {
       copyLinkBtn.onclick = () => {
@@ -262,7 +255,6 @@ export async function renderPublishPage(container, { param: eventId }) {
       };
     }
 
-    // Copy Passcode
     const copyPassBtn = document.getElementById('btn-copy-passcode');
     if (copyPassBtn) {
       copyPassBtn.onclick = () => {
@@ -271,7 +263,6 @@ export async function renderPublishPage(container, { param: eventId }) {
       };
     }
 
-    // Toggle Publish / Unpublish
     const toggleStatusBtn = document.getElementById('btn-toggle-status');
     if (toggleStatusBtn) {
       toggleStatusBtn.onclick = async () => {
@@ -282,7 +273,6 @@ export async function renderPublishPage(container, { param: eventId }) {
       };
     }
 
-    // Export CSV
     const exportCsvBtn = document.getElementById('btn-export-csv');
     if (exportCsvBtn) {
       exportCsvBtn.onclick = () => {
@@ -309,7 +299,6 @@ export async function renderPublishPage(container, { param: eventId }) {
       };
     }
 
-    // Search input
     const searchInput = document.getElementById('input-roster-search');
     if (searchInput) {
       searchInput.oninput = (e) => {
@@ -323,7 +312,7 @@ export async function renderPublishPage(container, { param: eventId }) {
       };
     }
 
-    // Status Selector Change Handler
+    // Status Selector Change Handler with Email Triggers
     document.querySelectorAll('.select-booking-status').forEach(sel => {
       sel.onchange = async () => {
         const bookingId = sel.dataset.id;
@@ -354,30 +343,46 @@ export async function renderPublishPage(container, { param: eventId }) {
           await supabase.from('timeslots').update({ status: 'booked' }).eq('id', slotId);
         }
 
-        // Update local object
-        const item = bookingsList.find(b => b.id === bookingId);
-        if (item) {
-          item.status = newStatus;
-          item.attendance_confirmed = isAttended;
+        // Send Email Notification to Attendee
+        const bItem = bookingsList.find(b => b.id === bookingId);
+        const participantObj = bItem?.participant_profiles;
+        if (participantObj) {
+          if (newStatus === 'cancelled') {
+            sendCancellationEmail(bItem, event, participantObj);
+          } else {
+            sendStatusUpdateEmail(bItem, event, participantObj, newStatus);
+          }
         }
 
-        toast('Status updated to ' + newStatus, 'success');
+        if (bItem) {
+          bItem.status = newStatus;
+          bItem.attendance_confirmed = isAttended;
+        }
+
+        toast('Status updated to ' + newStatus + ' and participant notified!', 'success');
         renderView();
       };
     });
 
-    // Delete Booking Button Handler
+    // Delete Booking Button Handler with Cancellation Notice
     document.querySelectorAll('.btn-delete-booking').forEach(btn => {
       btn.onclick = async () => {
         const bookingId = btn.dataset.id;
         const slotId = btn.dataset.slotId;
         const ref = btn.dataset.ref;
 
-        if (!confirm('Are you sure you want to permanently delete booking ' + ref + '?')) {
+        if (!confirm('Are you sure you want to cancel and delete booking ' + ref + '? A cancellation email will be sent to the participant.')) {
           return;
         }
 
         btn.disabled = true;
+
+        // Send cancellation notice before deletion
+        const bItem = bookingsList.find(b => b.id === bookingId);
+        if (bItem?.participant_profiles) {
+          sendCancellationEmail(bItem, event, bItem.participant_profiles);
+        }
+
         const { error: delErr } = await supabase
           .from('bookings')
           .delete()
@@ -394,9 +399,8 @@ export async function renderPublishPage(container, { param: eventId }) {
           await supabase.from('timeslots').update({ status: 'available' }).eq('id', slotId);
         }
 
-        // Remove from local list
         bookingsList = bookingsList.filter(b => b.id !== bookingId);
-        toast('Booking ' + ref + ' deleted.', 'info');
+        toast('Booking ' + ref + ' cancelled and deleted.', 'info');
         renderView();
       };
     });
