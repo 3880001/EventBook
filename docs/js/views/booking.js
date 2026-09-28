@@ -79,28 +79,91 @@ function renderPasscodeGate(container, event, onUnlock) {
 async function renderBookingWorkspace(container, event) {
   let selectedSlot = null;
   let activeDateId = event.event_dates && event.event_dates[0] ? event.event_dates[0].id : null;
-  let activeTrack = 'all'; // Default to "All Tracks" so participants see all available slots
+  let activeTrack = 'all'; // Default shows all slots across all tracks
 
   const isFullDayEvent = (event.event_dates && event.event_dates.some(d => d.is_full_day)) || (event.slot_duration_minutes >= 480);
 
+  // Self-Healing Timeslot Loader
   async function loadTimeslots() {
-    const { data: slots, error } = await supabase
+    let { data: slots, error } = await supabase
       .from('timeslots')
       .select('*')
       .eq('event_id', event.id)
-      .order('start_time', { ascending: true });
+      .order('start_time', { ascending: true })
+      .order('track_number', { ascending: true });
 
-    if (error) {
-      console.error('Failed to load slots:', error);
-      return [];
+    // If 0 slots found in database, automatically generate and save them
+    if (!slots || slots.length === 0) {
+      slots = await generateMissingSlotsClient(event);
     }
     return slots || [];
+  }
+
+  // Client-Side Generator Fallback
+  async function generateMissingSlotsClient(evt) {
+    const duration = evt.slot_duration_minutes || 15;
+    const buffer = evt.buffer_minutes || 0;
+    const tracks = Math.max(1, evt.parallel_tracks || 1);
+    const dates = (evt.event_dates && evt.event_dates.length > 0)
+      ? evt.event_dates
+      : [{ id: null, event_date: new Date().toISOString().split('T')[0], start_time: '09:00:00', end_time: '17:00:00' }];
+
+    const generated = [];
+
+    dates.forEach(d => {
+      const dateStr = d.event_date || new Date().toISOString().split('T')[0];
+      const sTime = (d.start_time || '09:00:00').slice(0, 5);
+      const eTime = (d.end_time || '17:00:00').slice(0, 5);
+
+      for (let tr = 1; tr <= tracks; tr++) {
+        if (isFullDayEvent) {
+          generated.push({
+            event_id: evt.id,
+            event_date_id: d.id || null,
+            track_number: tr,
+            start_time: dateStr + 'T' + sTime + ':00',
+            end_time: dateStr + 'T' + eTime + ':00',
+            status: 'available'
+          });
+        } else {
+          let [sH, sM] = sTime.split(':').map(Number);
+          let [eH, eM] = eTime.split(':').map(Number);
+          let curr = sH * 60 + sM;
+          let end = eH * 60 + eM;
+          if (end <= curr) end = curr + 480;
+
+          while (curr + duration <= end) {
+            const sh = String(Math.floor(curr / 60)).padStart(2, '0');
+            const sm = String(curr % 60).padStart(2, '0');
+            const eh = String(Math.floor((curr + duration) / 60)).padStart(2, '0');
+            const em = String((curr + duration) % 60).padStart(2, '0');
+
+            generated.push({
+              event_id: evt.id,
+              event_date_id: d.id || null,
+              track_number: tr,
+              start_time: dateStr + 'T' + sh + ':' + sm + ':00',
+              end_time: dateStr + 'T' + eh + ':' + em + ':00',
+              status: 'available'
+            });
+
+            curr += duration + buffer;
+          }
+        }
+      }
+    });
+
+    if (generated.length > 0) {
+      const { data: saved } = await supabase.from('timeslots').insert(generated).select();
+      if (saved && saved.length > 0) return saved;
+    }
+    return generated;
   }
 
   let timeslots = await loadTimeslots();
 
   function render() {
-    // Filter slots by selected date and track
+    // Filter slots by selected date and optional track
     const currentSlots = timeslots.filter(s => {
       const matchDate = (!activeDateId || !s.event_date_id || event.event_dates?.length <= 1) 
         ? true 
@@ -111,10 +174,16 @@ async function renderBookingWorkspace(container, event) {
       return matchDate && matchTrack;
     });
 
+    // Sort chronologically by start time, then track number
+    currentSlots.sort((a, b) => {
+      const diff = new Date(a.start_time) - new Date(b.start_time);
+      return diff !== 0 ? diff : (a.track_number - b.track_number);
+    });
+
     const customFields = event.event_custom_fields || [];
     const activeDateObj = (event.event_dates && event.event_dates.find(d => d.id === activeDateId)) || (event.event_dates && event.event_dates[0]);
 
-    // Build Date Filter Tabs
+    // Build Date Filter Tabs (if event spans multiple days)
     let datesTabsHtml = '';
     if (event.event_dates && event.event_dates.length > 1) {
       let dateButtons = '';
@@ -127,7 +196,7 @@ async function renderBookingWorkspace(container, event) {
       datesTabsHtml = '<div style="margin-bottom:1.25rem;"><label class="form-label">Select Date</label><div style="display:flex; gap:0.5rem; flex-wrap:wrap;">' + dateButtons + '</div></div>';
     }
 
-    // Build Track Filter Tabs (with "All Tracks" default)
+    // Build Track Filter Tabs (with "All Tracks" as default)
     let tracksTabsHtml = '';
     if (!isFullDayEvent && event.parallel_tracks && event.parallel_tracks > 1) {
       const allClass = (activeTrack === 'all') ? 'btn-primary' : 'btn-secondary';
@@ -139,7 +208,7 @@ async function renderBookingWorkspace(container, event) {
       tracksTabsHtml = '<div style="margin-bottom:1.25rem;"><label class="form-label">Filter by Track / Room</label><div style="display:flex; gap:0.5rem; flex-wrap:wrap;">' + trackButtons + '</div></div>';
     }
 
-    // Slots Display: Full-Day vs Standard Timeslots Grid
+    // Slots Presentation
     let slotsDisplayHtml = '';
     if (isFullDayEvent) {
       const isBooked = currentSlots.length > 0 && currentSlots[0].status === 'booked';
@@ -168,9 +237,7 @@ async function renderBookingWorkspace(container, event) {
         + '<div>' + actionBtn + '</div>'
         + '</div></div>';
     } else if (currentSlots.length === 0) {
-      slotsDisplayHtml = '<div style="text-align:center; padding:2rem 1rem; color:var(--text-muted);">'
-        + '<p>No available timeslots found for this selection.</p>'
-        + '</div>';
+      slotsDisplayHtml = '<div style="text-align:center; padding:2rem 1rem; color:var(--text-muted);"><p>No available timeslots found for this selection.</p></div>';
     } else {
       let slotButtons = '';
       for (let i = 0; i < currentSlots.length; i++) {
@@ -183,7 +250,7 @@ async function renderBookingWorkspace(container, event) {
         const cursor = isBooked ? 'not-allowed' : 'pointer';
         const opacity = isBooked ? '0.5' : '1';
         const disabledAttr = isBooked ? 'disabled' : '';
-        const trackTag = (event.parallel_tracks > 1 && slot.track_number) ? (' • T' + slot.track_number) : '';
+        const trackTag = (event.parallel_tracks > 1 && slot.track_number) ? (' • Track ' + slot.track_number) : '';
         const subText = isBooked ? 'Booked' : (endTimeStr + trackTag);
 
         slotButtons += '<button type="button" class="btn btn-slot ' + btnClass + '" data-slot-id="' + slot.id + '" ' + disabledAttr
@@ -192,10 +259,10 @@ async function renderBookingWorkspace(container, event) {
           + '<span style="font-size:0.75rem; opacity:0.85; font-weight:normal;">' + subText + '</span>'
           + '</button>';
       }
-      slotsDisplayHtml = '<div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(135px, 1fr)); gap:0.6rem; margin-top:0.5rem;">' + slotButtons + '</div>';
+      slotsDisplayHtml = '<div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(145px, 1fr)); gap:0.65rem; margin-top:0.5rem;">' + slotButtons + '</div>';
     }
 
-    // Build Custom Questions
+    // Custom Questions
     let customFieldsHtml = '';
     for (let i = 0; i < customFields.length; i++) {
       const cf = customFields[i];
