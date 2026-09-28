@@ -1,16 +1,17 @@
-import { Router } from './router.js?v=12';
-import { renderDashboard, renderMyEvents } from './views/dashboard.js?v=12';
-import { renderWizard } from './views/wizard.js?v=12';
-import { renderPublishPage } from './views/publish.js?v=12';
-import { renderBookingPage } from './views/booking.js?v=12';
-import { renderTicketPage } from './views/ticket.js?v=12';
-import { renderAdminDashboard } from './views/admin.js?v=12';
-import { renderAnalyticsPage } from './views/analytics.js?v=12';
-import { renderFeedbackPage } from './views/feedback.js?v=12';
-import { renderAuthPage } from './views/auth.js?v=12';
-import { supabase } from './supabaseClient.js?v=12';
+import { Router } from './router.js?v=14';
+import { renderDashboard, renderMyEvents } from './views/dashboard.js?v=14';
+import { renderWizard } from './views/wizard.js?v=14';
+import { renderPublishPage } from './views/publish.js?v=14';
+import { renderBookingPage } from './views/booking.js?v=14';
+import { renderTicketPage } from './views/ticket.js?v=14';
+import { renderRsvpPage } from './views/rsvp.js?v=14';
+import { renderAdminDashboard } from './views/admin.js?v=14';
+import { renderAnalyticsPage } from './views/analytics.js?v=14';
+import { renderFeedbackPage } from './views/feedback.js?v=14';
+import { renderAuthPage } from './views/auth.js?v=14';
+import { supabase } from './supabaseClient.js?v=14';
 
-// Route Registry separating Dashboard Analytics from My Events
+// Route Registry
 const routes = {
   '/auth': (root) => renderAuthPage(root),
   '/dashboard': (root) => renderDashboard(root),
@@ -20,12 +21,13 @@ const routes = {
   '/publish/:id': (root, ctx) => renderPublishPage(root, ctx),
   '/book/:slug': (root, ctx) => renderBookingPage(root, ctx),
   '/ticket/:ref': (root, ctx) => renderTicketPage(root, ctx),
+  '/rsvp/:ref/:action': (root, ctx) => renderRsvpPage(root, ctx),
   '/analytics/:id': (root, ctx) => renderAnalyticsPage(root, ctx),
   '/feedback/:id': (root, ctx) => renderFeedbackPage(root, ctx),
   '/admin': (root) => renderAdminDashboard(root)
 };
 
-// Initialize Router directly without declaring an intermediate variable
+// Initialize Router directly without intermediate variable declaration
 new Router(routes, document.getElementById('app-root'));
 
 // Track authentication state
