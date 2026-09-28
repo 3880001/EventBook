@@ -1,18 +1,16 @@
-import { Router } from './router.js?v=10';
-import { renderDashboard, renderMyEvents } from './views/dashboard.js?v=10';
-import { renderWizard } from './views/wizard.js?v=10';
-import { renderPublishPage } from './views/publish.js?v=10';
-import { renderBookingPage } from './views/booking.js?v=10';
-import { renderTicketPage } from './views/ticket.js?v=10';
-import { renderAdminDashboard } from './views/admin.js?v=10';
-import { renderAnalyticsPage } from './views/analytics.js?v=10';
-import { renderFeedbackPage } from './views/feedback.js?v=10';
-import { renderAuthPage } from './views/auth.js?v=10';
-import { supabase } from './supabaseClient.js?v=10';
+import { Router } from './router.js?v=11';
+import { renderDashboard, renderMyEvents } from './views/dashboard.js?v=11';
+import { renderWizard } from './views/wizard.js?v=11';
+import { renderPublishPage } from './views/publish.js?v=11';
+import { renderBookingPage } from './views/booking.js?v=11';
+import { renderTicketPage } from './views/ticket.js?v=11';
+import { renderAdminDashboard } from './views/admin.js?v=11';
+import { renderAnalyticsPage } from './views/analytics.js?v=11';
+import { renderFeedbackPage } from './views/feedback.js?v=11';
+import { renderAuthPage } from './views/auth.js?v=11';
+import { supabase } from './supabaseClient.js?v=11';
 
-const appRoot = document.getElementById('app-root');
-
-// Route Registry
+// Route Registry separating Dashboard Analytics from My Events
 const routes = {
   '/auth': (root) => renderAuthPage(root),
   '/dashboard': (root) => renderDashboard(root),
@@ -27,10 +25,10 @@ const routes = {
   '/admin': (root) => renderAdminDashboard(root)
 };
 
-// Initialize Router
-new Router(routes, appRoot);
+// Initialize Router directly without declaring an intermediate variable
+new Router(routes, document.getElementById('app-root'));
 
-// Auth state tracking
+// Track authentication state
 supabase.auth.onAuthStateChange((event, session) => {
   const authBtn = document.getElementById('btn-auth-action');
   const mainNav = document.getElementById('main-nav');
