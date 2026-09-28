@@ -395,7 +395,12 @@ function renderConfirmationScreen(container, event, slot, bookingRef, participan
     startStr = new Date(activeDateObj.event_date + 'T00:00:00').toLocaleDateString(undefined, { dateStyle: 'medium' });
   }
 
-  const qrCodeData = generateQRCodeDataURI(bookingRef);
+  // Generate QR code encoding the live mobile ticket link
+  const basePath = window.location.pathname.endsWith('/') 
+    ? window.location.pathname 
+    : window.location.pathname + '/';
+  const ticketLiveUrl = window.location.origin + basePath + '#/ticket/' + bookingRef;
+  const qrCodeData = generateQRCodeDataURI(ticketLiveUrl);
 
   container.innerHTML = '<div style="max-width:550px; margin:2rem auto; padding:0 1rem;">'
     + '<div class="card" style="border:2px solid var(--success); text-align:center; padding:2.5rem 1.5rem;">'
@@ -423,8 +428,8 @@ function renderConfirmationScreen(container, event, slot, bookingRef, participan
     + '</div>'
     + '</div>'
     + '<div style="margin:1.5rem 0;">'
-    + '<img src="' + qrCodeData + '" alt="QR" style="width:110px; height:110px; border:1px solid var(--border-color); border-radius:8px; padding:4px;" />'
-    + '<div style="font-size:0.75rem; color:var(--text-muted); margin-top:0.35rem;">Show this QR code at check-in</div>'
+    + '<img src="' + qrCodeData + '" alt="Ticket QR Code" style="width:120px; height:120px; border:1px solid var(--border-color); border-radius:8px; padding:4px;" />'
+    + '<div style="font-size:0.75rem; color:var(--text-muted); margin-top:0.35rem;">Scan this QR code to view live digital ticket</div>'
     + '</div>'
     + '<button onclick="window.print()" class="btn btn-secondary btn-sm" style="margin-top:0.5rem;">'
     + '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>'
