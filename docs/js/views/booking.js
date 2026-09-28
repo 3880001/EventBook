@@ -33,11 +33,44 @@ export async function renderBookingPage(container, { param: slug, query }) {
     return;
   }
 
-  const rawPasscode = (event.passcode_plain || '').trim();
+  // Check if all dates for this event have passed
+  const now = new Date();
+  let hasUpcomingDate = false;
+  if (event.event_dates && event.event_dates.length > 0) {
+    hasUpcomingDate = event.event_dates.some(ed => {
+      const endStr = ed.end_time || '23:59:59';
+      return new Date(ed.event_date + 'T' + endStr) >= now;
+    });
+  } else {
+    hasUpcomingDate = true;
+  }
+
+  if (!hasUpcomingDate) {
+    container.innerHTML = '<div style="max-width:550px; margin:4rem auto; padding:0 1rem;">'
+      + '<div class="card" style="text-align:center; padding:3rem 1.5rem; border-radius:16px;">'
+      + '<div style="display:inline-flex; align-items:center; justify-content:center; width:64px; height:64px; border-radius:50%; background:#f1f5f9; color:#64748b; font-size:1.75rem; margin-bottom:1rem;">'
+      + '⏳'
+      + '</div>'
+      + '<h1 style="font-size:1.6rem; font-weight:700; margin-bottom:0.5rem;">' + event.name + '</h1>'
+      + '<div style="display:inline-block; background:#e2e8f0; color:#334155; font-size:0.8rem; font-weight:700; padding:4px 12px; border-radius:6px; margin-bottom:1rem; text-transform:uppercase;">'
+      + 'Event Concluded'
+      + '</div>'
+      + '<p style="color:var(--text-muted); font-size:0.95rem; line-height:1.5;">'
+      + 'This event has already taken place and bookings are now closed. Thank you for your interest!'
+      + '</p>'
+      + '<div style="margin-top:2rem;">'
+      + '<a href="#/events" class="btn btn-secondary btn-sm" style="text-decoration:none;">View My Events & History</a>'
+      + '</div>'
+      + '</div>'
+      + '</div>';
+    return;
+  }
+
+  // Passcode Gate Check
+  const rawPasscode = (event.passcode_plain || event.passcode_hash || '').trim();
   const hasPasscode = rawPasscode.length > 0;
   const passcodeStorageKey = 'passcode_unlocked_' + event.id;
 
-  // Support intentional manual relocking via ?relock=true or explicit lock action
   if (query && query.get('relock') === 'true') {
     sessionStorage.removeItem(passcodeStorageKey);
   }
@@ -214,9 +247,8 @@ async function renderBookingWorkspace(container, event, hasPasscode) {
     const formDisplay = selectedSlot ? 'block' : 'none';
     const durationLabel = isFullDayEvent ? 'Whole Day Event' : (event.slot_duration_minutes + ' Mins Duration');
     
-    // Security Indicator & Relock Trigger
     const passcodeStatusBadge = hasPasscode
-      ? '<div style="display:inline-flex; align-items:center; gap:0.4rem; background:#ecfdf5; color:#065f46; padding:3px 10px; border-radius:6px; font-size:0.8rem; font-weight:600;">'
+      ? '<div style="display:inline-flex; align-items:center; gap:0.4rem; background:#ecfdf5; color:#065f46; padding:4px 10px; border-radius:6px; font-size:0.8rem; font-weight:600;">'
         + '<span>🔒 Passcode Unlocked</span>'
         + '<button type="button" id="btn-relock-event" style="background:none; border:none; color:#047857; text-decoration:underline; font-size:0.8rem; cursor:pointer; font-weight:600; padding:0 2px;" title="Relock this event to test the gate">[Lock 🔒]</button>'
         + '</div>'
@@ -269,7 +301,6 @@ async function renderBookingWorkspace(container, event, hasPasscode) {
   }
 
   function bindActions(currentSlots, activeDateObj) {
-    // Relock Button Handler
     const relockBtn = document.getElementById('btn-relock-event');
     if (relockBtn) {
       relockBtn.onclick = () => {
