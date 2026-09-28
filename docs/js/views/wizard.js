@@ -1,5 +1,6 @@
 import { supabase } from '../supabaseClient.js';
 import { toast } from '../utils/ui.js';
+import { attachLocationAutocomplete } from '../utils/location.js';
 
 export async function renderWizard(container, { param: eventId }) {
   container.innerHTML = '<div class="loader-center"><div class="spinner"></div></div>';
@@ -71,7 +72,7 @@ export async function renderWizard(container, { param: eventId }) {
     let stepContent = '';
 
     if (currentStep === 1) {
-      // Step 1: Basic Information
+      // Step 1: Basic Information + Autocomplete Location
       stepContent = '<div class="card">'
         + '<h2 style="font-size:1.25rem; font-weight:700; margin-bottom:1.25rem;">Step 1: Event Details</h2>'
         + '<div class="form-group">'
@@ -87,10 +88,16 @@ export async function renderWizard(container, { param: eventId }) {
         + '<label class="form-label">Description</label>'
         + '<textarea id="w-description" class="form-control" rows="3" placeholder="Provide event instructions or details...">' + (formData.description || '') + '</textarea>'
         + '</div>'
-        + '<div class="form-group">'
+        
+        // Autocomplete Location Field
+        + '<div class="form-group" style="position:relative;">'
         + '<label class="form-label">Location / Online Meeting Link</label>'
-        + '<input type="text" id="w-location" class="form-control" placeholder="e.g. Room 204 or Google Meet link" value="' + (formData.location_details || '') + '" />'
+        + '<input type="text" id="w-location" class="form-control" autocomplete="off" placeholder="e.g. Tim Hortons, Ebenezer Rd or Google Meet link" value="' + (formData.location_details || '') + '" />'
+        + '<div id="location-suggestions" style="display:none; position:absolute; left:0; right:0; top:100%; background:#ffffff; border:1px solid var(--border-color); border-radius:8px; box-shadow:0 10px 25px rgba(0,0,0,0.12); z-index:1000; max-height:220px; overflow-y:auto; margin-top:4px;"></div>'
+        + '<div id="location-preview" style="margin-top:0.45rem; font-size:0.85rem;"></div>'
+        + '<small style="color:var(--text-muted);">Type an address for instant suggestions, or enter an online meeting link</small>'
         + '</div>'
+
         + '<div style="display:flex; justify-content:flex-end; margin-top:1.5rem;">'
         + '<button type="button" id="btn-next-step" class="btn btn-primary">Next: Timing & Capacity &rarr;</button>'
         + '</div>'
@@ -172,7 +179,6 @@ export async function renderWizard(container, { param: eventId }) {
           + '</div>';
       }
 
-      // Custom fields list
       let customFieldsHtml = '';
       for (let i = 0; i < formData.custom_fields.length; i++) {
         const cf = formData.custom_fields[i];
@@ -188,14 +194,12 @@ export async function renderWizard(container, { param: eventId }) {
       stepContent = '<div class="card">'
         + '<h2 style="font-size:1.25rem; font-weight:700; margin-bottom:1.25rem;">Step 3: Access, Reminders & Questions</h2>'
         
-        // Passcode Protection
         + '<div class="form-group">'
         + '<label class="form-label">Passcode Protection (Optional)</label>'
         + '<input type="text" id="w-passcode" class="form-control" placeholder="Leave empty for public access" value="' + (formData.passcode_plain || '') + '" />'
         + '<small style="color:var(--text-muted);">Participants must enter this passcode before choosing a slot</small>'
         + '</div>'
 
-        // Multi-Reminder Management Card
         + '<div class="card" style="background:#f8fafc; border:1px solid var(--border-color); padding:1.25rem; margin:1.5rem 0; border-radius:10px;">'
         + '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.75rem; flex-wrap:wrap; gap:0.5rem;">'
         + '<div>'
@@ -207,7 +211,6 @@ export async function renderWizard(container, { param: eventId }) {
         + '<div id="reminders-list-box">' + remindersListHtml + '</div>'
         + '</div>'
 
-        // Custom Questionnaire
         + '<div class="form-group">'
         + '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">'
         + '<label class="form-label" style="margin:0;">Custom Registration Questions</label>'
@@ -235,6 +238,18 @@ export async function renderWizard(container, { param: eventId }) {
   }
 
   function bindStepEvents() {
+    // Autocomplete Initialization on Step 1
+    if (currentStep === 1) {
+      const locInput = document.getElementById('w-location');
+      const suggBox = document.getElementById('location-suggestions');
+      const prevBox = document.getElementById('location-preview');
+      if (locInput && suggBox) {
+        attachLocationAutocomplete(locInput, suggBox, prevBox, (selectedAddress) => {
+          formData.location_details = selectedAddress;
+        });
+      }
+    }
+
     const nameInput = document.getElementById('w-name');
     if (nameInput) {
       nameInput.oninput = () => {
@@ -304,7 +319,7 @@ export async function renderWizard(container, { param: eventId }) {
       };
     }
 
-    // Reminders Management Handlers
+    // Reminders
     const btnAddReminder = document.getElementById('btn-add-reminder');
     if (btnAddReminder) {
       btnAddReminder.onclick = () => {
@@ -334,7 +349,7 @@ export async function renderWizard(container, { param: eventId }) {
       };
     });
 
-    // Custom Fields Handlers
+    // Custom Fields
     const btnAddCf = document.getElementById('btn-add-cf');
     if (btnAddCf) {
       btnAddCf.onclick = () => {
@@ -357,7 +372,6 @@ export async function renderWizard(container, { param: eventId }) {
         btnSave.disabled = true;
         btnSave.innerText = 'Saving Event...';
 
-        // Read Custom Fields
         const labels = document.querySelectorAll('.input-cf-label');
         const reqs = document.querySelectorAll('.input-cf-req');
         const collectedFields = [];
@@ -398,7 +412,6 @@ export async function renderWizard(container, { param: eventId }) {
             savedEventId = newEv.id;
           }
 
-          // Update event_dates
           await supabase.from('event_dates').delete().eq('event_id', savedEventId);
           const { error: dateErr } = await supabase.from('event_dates').insert({
             event_id: savedEventId,
@@ -409,7 +422,6 @@ export async function renderWizard(container, { param: eventId }) {
           });
           if (dateErr) throw dateErr;
 
-          // Update custom_fields
           await supabase.from('event_custom_fields').delete().eq('event_id', savedEventId);
           if (formData.custom_fields.length > 0) {
             const cfInserts = formData.custom_fields.map((c, i) => ({
