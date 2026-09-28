@@ -3,18 +3,16 @@ import { toast, generateQRCodeDataURI } from '../utils/ui.js';
 
 export async function renderBookingPage(container, { param: slug }) {
   if (!slug) {
-    container.innerHTML = `<div class="card"><p style="color:var(--danger);">Invalid booking link.</p></div>`;
+    container.innerHTML = '<div class="card"><p style="color:var(--danger);">Invalid booking link.</p></div>';
     return;
   }
+
+  container.innerHTML = '<div class="loader-center"><div class="spinner"></div></div>';
 
   // 1. Fetch Event by Slug
   const { data: event, error: eventErr } = await supabase
     .from('events')
-    .select(`
-      *,
-      event_dates (*),
-      event_custom_fields (*)
-    `)
+    .select('*, event_dates (*), event_custom_fields (*)')
     .eq('slug', slug)
     .single();
 
@@ -22,7 +20,7 @@ export async function renderBookingPage(container, { param: slug }) {
     container.innerHTML = `
       <div class="card" style="text-align:center; padding:3rem 1rem;">
         <h2 style="font-size:1.5rem; font-weight:700;">Event Not Found</h2>
-        <p style="color:var(--text-muted); margin-top:0.5rem;">This event may have been deleted or the link is incorrect.</p>
+        <p style="color:var(--text-muted); margin-top:0.5rem;">This event may have been removed or the URL is incorrect.</p>
       </div>
     `;
     return;
@@ -32,14 +30,14 @@ export async function renderBookingPage(container, { param: slug }) {
     container.innerHTML = `
       <div class="card" style="text-align:center; padding:3rem 1rem;">
         <h2 style="font-size:1.5rem; font-weight:700;">Event Unavailable</h2>
-        <p style="color:var(--text-muted); margin-top:0.5rem;">This event is currently in draft mode or has been unpublished by the organizer.</p>
+        <p style="color:var(--text-muted); margin-top:0.5rem;">This event is currently in draft mode or unpublished.</p>
       </div>
     `;
     return;
   }
 
   // 2. Check Passcode Protection Gate
-  const passcodeStorageKey = `passcode_unlocked_${event.id}`;
+  const passcodeStorageKey = 'passcode_unlocked_' + event.id;
   const isUnlocked = !event.passcode_plain || sessionStorage.getItem(passcodeStorageKey) === 'true';
 
   if (!isUnlocked) {
@@ -47,7 +45,7 @@ export async function renderBookingPage(container, { param: slug }) {
     return;
   }
 
-  // 3. Render Main Booking Interface
+  // 3. Render Workspace
   await renderBookingWorkspace(container, event);
 }
 
@@ -76,7 +74,7 @@ function renderPasscodeGate(container, event, onUnlock) {
     e.preventDefault();
     const entered = document.getElementById('input-event-passcode').value.trim();
     if (entered === event.passcode_plain) {
-      sessionStorage.setItem(`passcode_unlocked_${event.id}`, 'true');
+      sessionStorage.setItem('passcode_unlocked_' + event.id, 'true');
       toast('Passcode accepted!', 'success');
       onUnlock();
     } else {
@@ -118,6 +116,126 @@ async function renderBookingWorkspace(container, event) {
     const customFields = event.event_custom_fields || [];
     const activeDateObj = event.event_dates?.find(d => d.id === activeDateId) || event.event_dates?.[0];
 
+    // Compute Date Tabs HTML
+    let datesTabsHtml = '';
+    if (event.event_dates && event.event_dates.length > 1) {
+      const dateButtons = event.event_dates.map(d => {
+        const btnClass = d.id === activeDateId ? 'btn-primary' : 'btn-secondary';
+        const formattedDate = new Date(d.event_date + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+        return `<button class="btn ${btnClass} btn-sm btn-filter-date" data-id="${d.id}">${formattedDate}</button>`;
+      }).join('');
+      datesTabsHtml = `
+        <div style="margin-bottom:1.25rem;">
+          <label class="form-label">Select Date</label>
+          <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">${dateButtons}</div>
+        </div>
+      `;
+    }
+
+    // Compute Track Tabs HTML
+    let tracksTabsHtml = '';
+    if (event.parallel_tracks && event.parallel_tracks > 1) {
+      let trackButtons = '';
+      for (let tr = 1; tr <= event.parallel_tracks; tr++) {
+        const btnClass = tr === activeTrack ? 'btn-primary' : 'btn-secondary';
+        trackButtons += `<button class="btn ${btnClass} btn-sm btn-filter-track" data-track="${tr}">Track ${tr}</button>`;
+      }
+      tracksTabsHtml = `
+        <div style="margin-bottom:1.25rem;">
+          <label class="form-label">Select Track</label>
+          <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">${trackButtons}</div>
+        </div>
+      `;
+    }
+
+    // Compute Slots Area HTML (Separated cleanly without deep nesting)
+    let slotsDisplayHtml = '';
+    if (isFullDayEvent) {
+      const isBooked = currentSlots.length > 0 && currentSlots[0].status === 'booked';
+      const buttonText = selectedSlot ? '✓ Full Day Selected' : 'Select Full Day';
+      const buttonClass = selectedSlot ? 'btn-primary' : 'btn-secondary';
+      const dateLabel = activeDateObj 
+        ? new Date(activeDateObj.event_date + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
+        : 'Whole Day Pass';
+      const startTimeLabel = activeDateObj?.start_time ? activeDateObj.start_time.slice(0, 5) : '09:00';
+      const endTimeLabel = activeDateObj?.end_time ? activeDateObj.end_time.slice(0, 5) : '17:00';
+
+      slotsDisplayHtml = `
+        <div style="background:#f8fafc; border:2px dashed var(--border-color); border-radius:12px; padding:1.5rem; margin-top:0.5rem;">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem;">
+            <div>
+              <div style="display:inline-block; background:#e0e7ff; color:#3730a3; font-weight:700; font-size:0.75rem; padding:2px 8px; border-radius:4px; text-transform:uppercase; margin-bottom:0.4rem;">
+                Full Day Session
+              </div>
+              <h3 style="font-size:1.15rem; font-weight:700; margin:0;">${dateLabel}</h3>
+              <p style="color:var(--text-muted); font-size:0.875rem; margin-top:0.25rem;">
+                Open session attendance from ${startTimeLabel} to ${endTimeLabel}.
+              </p>
+            </div>
+            <div>
+              ${isBooked 
+                ? '<span class="badge badge-warning" style="padding:0.6rem 1rem; font-size:0.9rem;">Fully Booked</span>' 
+                : `<button type="button" id="btn-select-fullday" class="btn ${buttonClass}" style="padding:0.65rem 1.25rem; font-weight:600;">${buttonText}</button>`
+              }
+            </div>
+          </div>
+        </div>
+      `;
+    } else if (currentSlots.length === 0) {
+      slotsDisplayHtml = `
+        <div style="text-align:center; padding:2rem 1rem; color:var(--text-muted);">
+          <p>No available timeslots found for this selection.</p>
+        </div>
+      `;
+    } else {
+      const slotButtons = currentSlots.map(slot => {
+        const isBooked = slot.status === 'booked';
+        const isSelected = selectedSlot && selectedSlot.id === slot.id;
+        const btnClass = isSelected ? 'btn-primary' : (isBooked ? 'btn-slot-booked' : 'btn-secondary');
+        const startTimeStr = new Date(slot.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const endTimeStr = new Date(slot.end_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const cursor = isBooked ? 'not-allowed' : 'pointer';
+        const opacity = isBooked ? '0.5' : '1';
+        const disabledAttr = isBooked ? 'disabled' : '';
+
+        return `
+          <button 
+            type="button" 
+            class="btn btn-slot ${btnClass}" 
+            data-slot-id="${slot.id}"
+            ${disabledAttr}
+            style="display:flex; flex-direction:column; align-items:center; justify-content:center; padding:0.6rem 0.4rem; border-radius:8px; font-size:0.825rem; font-weight:600; cursor:${cursor}; opacity:${opacity};"
+          >
+            <span>${startTimeStr}</span>
+            <span style="font-size:0.75rem; opacity:0.85; font-weight:normal;">${isBooked ? 'Booked' : endTimeStr}</span>
+          </button>
+        `;
+      }).join('');
+
+      slotsDisplayHtml = `
+        <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap:0.6rem; margin-top:0.5rem;">
+          ${slotButtons}
+        </div>
+      `;
+    }
+
+    // Compute Custom Questions HTML
+    const customFieldsHtml = customFields.map(cf => `
+      <div class="form-group">
+        <label class="form-label">${cf.label} ${cf.required ? '*' : ''}</label>
+        <input 
+          type="${cf.field_type || 'text'}" 
+          class="form-control custom-field-input" 
+          data-label="${cf.label}"
+          ${cf.required ? 'required' : ''} 
+        />
+      </div>
+    `).join('');
+
+    const formDisplay = selectedSlot ? 'block' : 'none';
+    const durationLabel = isFullDayEvent ? 'Whole Day Event' : (event.slot_duration_minutes + ' Mins Duration');
+    const passcodeBadge = event.passcode_plain ? '<div style="display:flex; align-items:center; gap:0.35rem;"><span>🔒</span> Passcode Protected</div>' : '';
+
     container.innerHTML = `
       <div style="max-width:850px; margin:0 auto; padding:1rem 0;">
         <!-- Header Banner -->
@@ -129,109 +247,22 @@ async function renderBookingWorkspace(container, event) {
               <span>📍</span> ${event.location_details || 'Online'}
             </div>
             <div style="display:flex; align-items:center; gap:0.35rem;">
-              <span>⏱️</span> ${isFullDayEvent ? 'Whole Day Event' : `${event.slot_duration_minutes} Mins Duration`}
+              <span>⏱️</span> ${durationLabel}
             </div>
-            ${event.passcode_plain ? '<div style="display:flex; align-items:center; gap:0.35rem;"><span>🔒</span> Passcode Protected</div>' : ''}
+            ${passcodeBadge}
           </div>
         </div>
 
         <!-- Appointment / Slot Selection Card -->
         <div class="card" style="margin-bottom:1.5rem;">
           <h2 style="font-size:1.25rem; font-weight:600; margin-bottom:1rem;">Select Appointment Slot</h2>
-
-          <!-- Multi-Date Tabs -->
-          ${(event.event_dates?.length > 1) ? `
-            <div style="margin-bottom:1.25rem;">
-              <label class="form-label">Select Date</label>
-              <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
-                ${event.event_dates.map(d => `
-                  <button class="btn ${d.id === activeDateId ? 'btn-primary' : 'btn-secondary'} btn-sm btn-filter-date" data-id="${d.id}">
-                    ${new Date(d.event_date + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
-                  </button>
-                `).join('')}
-              </div>
-            </div>
-          ` : ''}
-
-          <!-- Parallel Tracks Tabs -->
-          ${(event.parallel_tracks > 1) ? `
-            <div style="margin-bottom:1.25rem;">
-              <label class="form-label">Select Track</label>
-              <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
-                ${Array.from({ length: event.parallel_tracks }, (_, i) => i + 1).map(tr => `
-                  <button class="btn ${tr === activeTrack ? 'btn-primary' : 'btn-secondary'} btn-sm btn-filter-track" data-track="${tr}">
-                    Track ${tr}
-                  </button>
-                `).join('')}
-              </div>
-            </div>
-          ` : ''}
-
-          <!-- SLOTS DISPLAY -->
-          ${isFullDayEvent ? `
-            <div style="background:#f8fafc; border:2px dashed var(--border-color); border-radius:12px; padding:1.5rem; margin-top:0.5rem;">
-              <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem;">
-                <div>
-                  <div style="display:inline-block; background:#e0e7ff; color:#3730a3; font-weight:700; font-size:0.75rem; padding:2px 8px; border-radius:4px; text-transform:uppercase; margin-bottom:0.4rem;">
-                    Full Day Session
-                  </div>
-                  <h3 style="font-size:1.15rem; font-weight:700; margin:0;">
-                    ${activeDateObj ? new Date(activeDateObj.event_date + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }) : 'Whole Day Pass'}
-                  </h3>
-                  <p style="color:var(--text-muted); font-size:0.875rem; margin-top:0.25rem;">
-                    Open session attendance from ${activeDateObj?.start_time?.slice(0, 5) \vert{}\vert{} '09:00'} to${activeDateObj?.end_time?.slice(0, 5) || '17:00'}.
-                  </p>
-                </div>
-
-                <div>
-                  ${currentSlots.length > 0 && currentSlots[0].status === 'booked' ? `
-                    <span class="badge badge-warning" style="padding:0.6rem 1rem; font-size:0.9rem;">Fully Booked</span>
-                  ` : `
-                    <button 
-                      type="button" 
-                      id="btn-select-fullday" 
-                      class="btn ${selectedSlot ? 'btn-primary' : 'btn-secondary'}"
-                      style="padding:0.65rem 1.25rem; font-weight:600;"
-                    >
-                      ${selectedSlot ? '✓ Full Day Selected' : 'Select Full Day'}
-                    </button>
-                  `}
-                </div>
-              </div>
-            </div>
-          ` : `
-            ${currentSlots.length === 0 ? `
-              <div style="text-align:center; padding:2rem 1rem; color:var(--text-muted);">
-                <p>No available timeslots found for this selection.</p>
-              </div>
-            ` : `
-              <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap:0.6rem; margin-top:0.5rem;">
-                ${currentSlots.map(slot => {
-                  const isBooked = slot.status === 'booked';
-                  const isSelected = selectedSlot?.id === slot.id;
-                  const startTimeStr = new Date(slot.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                  const endTimeStr = new Date(slot.end_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
-                  return `
-                    <button 
-                      type="button" 
-                      class="btn btn-slot ${isSelected ? 'btn-primary' : isBooked ? 'btn-slot-booked' : 'btn-secondary'}" 
-                      data-slot-id="${slot.id}"
-                      ${isBooked ? 'disabled' : ''}
-                      style="display:flex; flex-direction:column; align-items:center; justify-content:center; padding:0.6rem 0.4rem; border-radius:8px; font-size:0.825rem; font-weight:600; cursor:${isBooked ? 'not-allowed' : 'pointer'}; opacity:${isBooked ? '0.5' : '1'};"
-                    >
-                      <span>${startTimeStr}</span>
-                      <span style="font-size:0.75rem; opacity:0.85; font-weight:normal;">${isBooked ? 'Booked' : endTimeStr}</span>
-                    </button>
-                  `;
-                }).join('')}
-              </div>
-            `}
-          `}
+          ${datesTabsHtml}
+          ${tracksTabsHtml}
+          ${slotsDisplayHtml}
         </div>
 
-        <!-- Participant Information Form (Revealed when slot is selected) -->
-        <div class="card" id="booking-form-card" style="display:${selectedSlot ? 'block' : 'none'};">
+        <!-- Participant Information Form -->
+        <div class="card" id="booking-form-card" style="display:${formDisplay};">
           <h2 style="font-size:1.25rem; font-weight:600; margin-bottom:1.25rem;">Participant Information</h2>
           <form id="booking-submit-form">
             <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
@@ -250,17 +281,7 @@ async function renderBookingWorkspace(container, event) {
               <input type="tel" id="p-phone" class="form-control" placeholder="+1 555-0199" />
             </div>
 
-            ${customFields.map((cf) => `
-              <div class="form-group">
-                <label class="form-label">${cf.label}${cf.required ? '*' : ''}</label>
-                <input 
-                  type="${cf.field_type || 'text'}" 
-                  class="form-control custom-field-input" 
-                  data-label="${cf.label}"
-                  ${cf.required ? 'required' : ''} 
-                />
-              </div>
-            `).join('')}
+            ${customFieldsHtml}
 
             <div style="margin-top:1.5rem; display:flex; justify-content:flex-end;">
               <button type="submit" id="btn-submit-booking" class="btn btn-primary" style="padding:0.75rem 1.5rem; font-weight:600;">
@@ -276,7 +297,6 @@ async function renderBookingWorkspace(container, event) {
   }
 
   function bindActions(currentSlots, activeDateObj) {
-    // Date filter click
     document.querySelectorAll('.btn-filter-date').forEach(btn => {
       btn.onclick = () => {
         activeDateId = btn.dataset.id;
@@ -285,7 +305,6 @@ async function renderBookingWorkspace(container, event) {
       };
     });
 
-    // Track filter click
     document.querySelectorAll('.btn-filter-track').forEach(btn => {
       btn.onclick = () => {
         activeTrack = Number(btn.dataset.track);
@@ -294,7 +313,6 @@ async function renderBookingWorkspace(container, event) {
       };
     });
 
-    // Full Day Selection Button
     const fullDayBtn = document.getElementById('btn-select-fullday');
     if (fullDayBtn) {
       fullDayBtn.onclick = () => {
@@ -309,7 +327,6 @@ async function renderBookingWorkspace(container, event) {
       };
     }
 
-    // Standard slot buttons
     document.querySelectorAll('.btn-slot:not([disabled])').forEach(btn => {
       btn.onclick = () => {
         const slotId = btn.dataset.slotId;
@@ -320,7 +337,6 @@ async function renderBookingWorkspace(container, event) {
       };
     });
 
-    // Form submission
     const form = document.getElementById('booking-submit-form');
     if (form) {
       form.onsubmit = async (e) => {
@@ -339,7 +355,6 @@ async function renderBookingWorkspace(container, event) {
         });
 
         try {
-          // 1. Upsert participant profile
           const { data: participant, error: partErr } = await supabase
             .from('participant_profiles')
             .upsert({ email, full_name: fullName, phone }, { onConflict: 'email' })
@@ -348,14 +363,12 @@ async function renderBookingWorkspace(container, event) {
 
           if (partErr) throw partErr;
 
-          // 2. Resolve slot ID
           let targetSlotId = selectedSlot.id;
           if (targetSlotId === 'fullday-virtual' || !targetSlotId) {
             const freshSlots = await loadTimeslots();
             targetSlotId = freshSlots[0]?.id;
           }
 
-          // 3. Generate Reference & Insert Booking
           const bookingRef = 'EB-' + Math.random().toString(36).substring(2, 8).toUpperCase();
           const { error: bookErr } = await supabase
             .from('bookings')
@@ -370,7 +383,6 @@ async function renderBookingWorkspace(container, event) {
 
           if (bookErr) throw bookErr;
 
-          // 4. Mark slot booked if discrete
           if (targetSlotId && targetSlotId !== 'fullday-virtual') {
             await supabase.from('timeslots').update({ status: 'booked' }).eq('id', targetSlotId);
           }
@@ -388,8 +400,8 @@ async function renderBookingWorkspace(container, event) {
   // Initial render
   render();
 
-  // Realtime channel listener
-  const channelName = `realtime_slots_${event.id}_${Date.now()}`;
+  // Realtime channel
+  const channelName = 'realtime_slots_' + event.id + '_' + Date.now();
   supabase.getChannels().forEach(ch => {
     if (ch.topic.includes(event.id)) supabase.removeChannel(ch);
   });
@@ -402,7 +414,7 @@ async function renderBookingWorkspace(container, event) {
         event: '*',
         schema: 'public',
         table: 'timeslots',
-        filter: `event_id=eq.${event.id}`
+        filter: 'event_id=eq.' + event.id
       },
       async () => {
         timeslots = await loadTimeslots();
