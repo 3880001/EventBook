@@ -1,10 +1,21 @@
 import { supabase } from '../supabaseClient.js';
+import { getLocationUrl, isOnlineMeeting } from './location.js';
 
 function getAppBaseUrl() {
   const basePath = window.location.pathname.endsWith('/') 
     ? window.location.pathname 
     : window.location.pathname + '/';
   return window.location.origin + basePath;
+}
+
+function formatLocationForEmail(locationStr) {
+  if (!locationStr || !locationStr.trim()) return 'Online';
+  const trimmed = locationStr.trim();
+  const url = getLocationUrl(trimmed);
+  if (isOnlineMeeting(trimmed)) {
+    return '<a href="' + url + '" target="_blank" style="color:#3b82f6; text-decoration:underline;">' + trimmed + ' (Join Online Meeting)</a>';
+  }
+  return '<a href="' + url + '" target="_blank" style="color:#3b82f6; text-decoration:underline;">' + trimmed + ' (Open in Google Maps ↗)</a>';
 }
 
 // 1. Dispatch Booking Confirmation Email
@@ -19,6 +30,8 @@ export async function sendBookingConfirmationEmail(booking, event, participant, 
     timeDisplay = new Date(slot.start_time).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
   }
 
+  const locationDisplay = formatLocationForEmail(event.location_details);
+
   const bodyHtml = '<div style="font-family:sans-serif; max-width:600px; margin:0 auto; padding:20px; border:1px solid #e2e8f0; border-radius:10px;">'
     + '<h2 style="color:#10b981; margin-top:0;">✓ Booking Confirmed!</h2>'
     + '<p>Dear <strong>' + (participant.full_name || 'Participant') + '</strong>,</p>'
@@ -26,7 +39,7 @@ export async function sendBookingConfirmationEmail(booking, event, participant, 
     + '<div style="background:#f8fafc; border:1px solid #cbd5e1; border-radius:8px; padding:15px; margin:15px 0;">'
     + '<p style="margin:4px 0;"><strong>Booking Reference:</strong> <span style="font-family:monospace; color:#3b82f6; font-size:1.1rem; font-weight:bold;">' + booking.booking_reference + '</span></p>'
     + '<p style="margin:4px 0;"><strong>Date & Time:</strong> ' + timeDisplay + '</p>'
-    + '<p style="margin:4px 0;"><strong>Location:</strong> ' + (event.location_details || 'Online') + '</p>'
+    + '<p style="margin:4px 0;"><strong>Location:</strong> ' + locationDisplay + '</p>'
     + '</div>'
     + '<div style="margin:25px 0; text-align:center;">'
     + '<a href="' + ticketUrl + '" style="background:#3b82f6; color:#ffffff; padding:12px 24px; text-decoration:none; border-radius:6px; font-weight:bold; display:inline-block;">'
@@ -99,11 +112,13 @@ export async function sendInteractiveReminderEmail(booking, event, participant) 
   const recipient = participant.email;
   const subject = 'Upcoming Reminder: ' + event.name + ' - Quick Attendance Check';
 
+  const locationDisplay = formatLocationForEmail(event.location_details);
+
   const bodyHtml = '<div style="font-family:sans-serif; max-width:600px; margin:0 auto; padding:20px; border:1px solid #e2e8f0; border-radius:10px;">'
     + '<h2 style="color:#0f172a; margin-top:0;">Upcoming Event Reminder</h2>'
     + '<p>Dear <strong>' + (participant.full_name || 'Participant') + '</strong>,</p>'
     + '<p>This is a reminder for your upcoming session for <strong>' + event.name + '</strong>.</p>'
-    + '<p><strong>Venue / Link:</strong> ' + (event.location_details || 'Online') + '<br/>'
+    + '<p><strong>Venue / Location:</strong> ' + locationDisplay + '<br/>'
     + '<strong>Booking Reference:</strong> ' + booking.booking_reference + '</p>'
     + '<div style="margin:25px 0; background:#f8fafc; border:1px solid #cbd5e1; border-radius:8px; padding:18px; text-align:center;">'
     + '<h3 style="margin-top:0; font-size:1rem; color:#334155;">Quick Response Options:</h3>'
