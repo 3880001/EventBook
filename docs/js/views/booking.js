@@ -1,5 +1,6 @@
 import { supabase } from '../supabaseClient.js';
 import { toast, generateQRCodeDataURI } from '../utils/ui.js';
+import { sendBookingConfirmationEmail } from '../utils/emailService.js';
 
 export async function renderBookingPage(container, { param: slug }) {
   if (!slug) {
@@ -9,7 +10,6 @@ export async function renderBookingPage(container, { param: slug }) {
 
   container.innerHTML = '<div class="loader-center"><div class="spinner"></div></div>';
 
-  // 1. Fetch Event by Slug
   const { data: event, error: eventErr } = await supabase
     .from('events')
     .select('*, event_dates (*), event_custom_fields (*)')
@@ -32,7 +32,6 @@ export async function renderBookingPage(container, { param: slug }) {
     return;
   }
 
-  // 2. Passcode Gate Check
   const passcodeStorageKey = 'passcode_unlocked_' + event.id;
   const isUnlocked = !event.passcode_plain || sessionStorage.getItem(passcodeStorageKey) === 'true';
 
@@ -41,7 +40,6 @@ export async function renderBookingPage(container, { param: slug }) {
     return;
   }
 
-  // 3. Render Workspace
   await renderBookingWorkspace(container, event);
 }
 
@@ -79,102 +77,30 @@ function renderPasscodeGate(container, event, onUnlock) {
 async function renderBookingWorkspace(container, event) {
   let selectedSlot = null;
   let activeDateId = event.event_dates && event.event_dates[0] ? event.event_dates[0].id : null;
-  let activeTrack = 'all'; // Default shows all slots across all tracks
+  let activeTrack = 'all';
 
   const isFullDayEvent = (event.event_dates && event.event_dates.some(d => d.is_full_day)) || (event.slot_duration_minutes >= 480);
 
-  // Self-Healing Timeslot Loader
   async function loadTimeslots() {
-    let { data: slots, error } = await supabase
+    let { data: slots } = await supabase
       .from('timeslots')
       .select('*')
       .eq('event_id', event.id)
       .order('start_time', { ascending: true })
       .order('track_number', { ascending: true });
 
-    // If 0 slots found in database, automatically generate and save them
-    if (!slots || slots.length === 0) {
-      slots = await generateMissingSlotsClient(event);
-    }
     return slots || [];
-  }
-
-  // Client-Side Generator Fallback
-  async function generateMissingSlotsClient(evt) {
-    const duration = evt.slot_duration_minutes || 15;
-    const buffer = evt.buffer_minutes || 0;
-    const tracks = Math.max(1, evt.parallel_tracks || 1);
-    const dates = (evt.event_dates && evt.event_dates.length > 0)
-      ? evt.event_dates
-      : [{ id: null, event_date: new Date().toISOString().split('T')[0], start_time: '09:00:00', end_time: '17:00:00' }];
-
-    const generated = [];
-
-    dates.forEach(d => {
-      const dateStr = d.event_date || new Date().toISOString().split('T')[0];
-      const sTime = (d.start_time || '09:00:00').slice(0, 5);
-      const eTime = (d.end_time || '17:00:00').slice(0, 5);
-
-      for (let tr = 1; tr <= tracks; tr++) {
-        if (isFullDayEvent) {
-          generated.push({
-            event_id: evt.id,
-            event_date_id: d.id || null,
-            track_number: tr,
-            start_time: dateStr + 'T' + sTime + ':00',
-            end_time: dateStr + 'T' + eTime + ':00',
-            status: 'available'
-          });
-        } else {
-          let [sH, sM] = sTime.split(':').map(Number);
-          let [eH, eM] = eTime.split(':').map(Number);
-          let curr = sH * 60 + sM;
-          let end = eH * 60 + eM;
-          if (end <= curr) end = curr + 480;
-
-          while (curr + duration <= end) {
-            const sh = String(Math.floor(curr / 60)).padStart(2, '0');
-            const sm = String(curr % 60).padStart(2, '0');
-            const eh = String(Math.floor((curr + duration) / 60)).padStart(2, '0');
-            const em = String((curr + duration) % 60).padStart(2, '0');
-
-            generated.push({
-              event_id: evt.id,
-              event_date_id: d.id || null,
-              track_number: tr,
-              start_time: dateStr + 'T' + sh + ':' + sm + ':00',
-              end_time: dateStr + 'T' + eh + ':' + em + ':00',
-              status: 'available'
-            });
-
-            curr += duration + buffer;
-          }
-        }
-      }
-    });
-
-    if (generated.length > 0) {
-      const { data: saved } = await supabase.from('timeslots').insert(generated).select();
-      if (saved && saved.length > 0) return saved;
-    }
-    return generated;
   }
 
   let timeslots = await loadTimeslots();
 
   function render() {
-    // Filter slots by selected date and optional track
     const currentSlots = timeslots.filter(s => {
-      const matchDate = (!activeDateId || !s.event_date_id || event.event_dates?.length <= 1) 
-        ? true 
-        : (s.event_date_id === activeDateId);
-      const matchTrack = (activeTrack === 'all') 
-        ? true 
-        : (s.track_number === Number(activeTrack));
+      const matchDate = (!activeDateId || !s.event_date_id || event.event_dates?.length <= 1) ? true : (s.event_date_id === activeDateId);
+      const matchTrack = (activeTrack === 'all') ? true : (s.track_number === Number(activeTrack));
       return matchDate && matchTrack;
     });
 
-    // Sort chronologically by start time, then track number
     currentSlots.sort((a, b) => {
       const diff = new Date(a.start_time) - new Date(b.start_time);
       return diff !== 0 ? diff : (a.track_number - b.track_number);
@@ -183,7 +109,7 @@ async function renderBookingWorkspace(container, event) {
     const customFields = event.event_custom_fields || [];
     const activeDateObj = (event.event_dates && event.event_dates.find(d => d.id === activeDateId)) || (event.event_dates && event.event_dates[0]);
 
-    // Build Date Filter Tabs (if event spans multiple days)
+    // Date Tabs
     let datesTabsHtml = '';
     if (event.event_dates && event.event_dates.length > 1) {
       let dateButtons = '';
@@ -196,7 +122,7 @@ async function renderBookingWorkspace(container, event) {
       datesTabsHtml = '<div style="margin-bottom:1.25rem;"><label class="form-label">Select Date</label><div style="display:flex; gap:0.5rem; flex-wrap:wrap;">' + dateButtons + '</div></div>';
     }
 
-    // Build Track Filter Tabs (with "All Tracks" as default)
+    // Track Tabs
     let tracksTabsHtml = '';
     if (!isFullDayEvent && event.parallel_tracks && event.parallel_tracks > 1) {
       const allClass = (activeTrack === 'all') ? 'btn-primary' : 'btn-secondary';
@@ -208,7 +134,7 @@ async function renderBookingWorkspace(container, event) {
       tracksTabsHtml = '<div style="margin-bottom:1.25rem;"><label class="form-label">Filter by Track / Room</label><div style="display:flex; gap:0.5rem; flex-wrap:wrap;">' + trackButtons + '</div></div>';
     }
 
-    // Slots Presentation
+    // Slots Grid
     let slotsDisplayHtml = '';
     if (isFullDayEvent) {
       const isBooked = currentSlots.length > 0 && currentSlots[0].status === 'booked';
@@ -220,13 +146,6 @@ async function renderBookingWorkspace(container, event) {
       const startTimeLabel = activeDateObj && activeDateObj.start_time ? activeDateObj.start_time.slice(0, 5) : '09:00';
       const endTimeLabel = activeDateObj && activeDateObj.end_time ? activeDateObj.end_time.slice(0, 5) : '17:00';
 
-      let actionBtn = '';
-      if (isBooked) {
-        actionBtn = '<span class="badge badge-warning" style="padding:0.6rem 1rem; font-size:0.9rem;">Fully Booked</span>';
-      } else {
-        actionBtn = '<button type="button" id="btn-select-fullday" class="btn ' + buttonClass + '" style="padding:0.65rem 1.25rem; font-weight:600;">' + buttonText + '</button>';
-      }
-
       slotsDisplayHtml = '<div style="background:#f8fafc; border:2px dashed var(--border-color); border-radius:12px; padding:1.5rem; margin-top:0.5rem;">'
         + '<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem;">'
         + '<div>'
@@ -234,7 +153,7 @@ async function renderBookingWorkspace(container, event) {
         + '<h3 style="font-size:1.15rem; font-weight:700; margin:0;">' + dateLabel + '</h3>'
         + '<p style="color:var(--text-muted); font-size:0.875rem; margin-top:0.25rem;">Open session attendance from ' + startTimeLabel + ' to ' + endTimeLabel + '.</p>'
         + '</div>'
-        + '<div>' + actionBtn + '</div>'
+        + '<div>' + (isBooked ? '<span class="badge badge-warning">Fully Booked</span>' : '<button type="button" id="btn-select-fullday" class="btn ' + buttonClass + '" style="padding:0.65rem 1.25rem; font-weight:600;">' + buttonText + '</button>') + '</div>'
         + '</div></div>';
     } else if (currentSlots.length === 0) {
       slotsDisplayHtml = '<div style="text-align:center; padding:2rem 1rem; color:var(--text-muted);"><p>No available timeslots found for this selection.</p></div>';
@@ -247,14 +166,11 @@ async function renderBookingWorkspace(container, event) {
         const btnClass = isSelected ? 'btn-primary' : (isBooked ? 'btn-slot-booked' : 'btn-secondary');
         const startTimeStr = new Date(slot.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         const endTimeStr = new Date(slot.end_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        const cursor = isBooked ? 'not-allowed' : 'pointer';
-        const opacity = isBooked ? '0.5' : '1';
-        const disabledAttr = isBooked ? 'disabled' : '';
         const trackTag = (event.parallel_tracks > 1 && slot.track_number) ? (' • Track ' + slot.track_number) : '';
         const subText = isBooked ? 'Booked' : (endTimeStr + trackTag);
 
-        slotButtons += '<button type="button" class="btn btn-slot ' + btnClass + '" data-slot-id="' + slot.id + '" ' + disabledAttr
-          + ' style="display:flex; flex-direction:column; align-items:center; justify-content:center; padding:0.65rem 0.5rem; border-radius:8px; font-size:0.85rem; font-weight:600; cursor:' + cursor + '; opacity:' + opacity + ';">'
+        slotButtons += '<button type="button" class="btn btn-slot ' + btnClass + '" data-slot-id="' + slot.id + '" ' + (isBooked ? 'disabled' : '')
+          + ' style="display:flex; flex-direction:column; align-items:center; justify-content:center; padding:0.65rem 0.5rem; border-radius:8px; font-size:0.85rem; font-weight:600; cursor:' + (isBooked ? 'not-allowed' : 'pointer') + '; opacity:' + (isBooked ? '0.5' : '1') + ';">'
           + '<span>' + startTimeStr + '</span>'
           + '<span style="font-size:0.75rem; opacity:0.85; font-weight:normal;">' + subText + '</span>'
           + '</button>';
@@ -266,12 +182,9 @@ async function renderBookingWorkspace(container, event) {
     let customFieldsHtml = '';
     for (let i = 0; i < customFields.length; i++) {
       const cf = customFields[i];
-      const reqStar = cf.required ? ' *' : '';
-      const reqAttr = cf.required ? 'required' : '';
-      const fType = cf.field_type || 'text';
       customFieldsHtml += '<div class="form-group">'
-        + '<label class="form-label">' + cf.label + reqStar + '</label>'
-        + '<input type="' + fType + '" class="form-control custom-field-input" data-label="' + cf.label + '" ' + reqAttr + ' />'
+        + '<label class="form-label">' + cf.label + (cf.required ? ' *' : '') + '</label>'
+        + '<input type="' + (cf.field_type || 'text') + '" class="form-control custom-field-input" data-label="' + cf.label + '" ' + (cf.required ? 'required' : '') + ' />'
         + '</div>';
     }
 
@@ -414,15 +327,25 @@ async function renderBookingWorkspace(container, event) {
             bookingPayload.timeslot_id = targetSlotId;
           }
 
-          const { error: bookErr } = await supabase
+          const { data: insertedBooking, error: bookErr } = await supabase
             .from('bookings')
-            .insert(bookingPayload);
+            .insert(bookingPayload)
+            .select()
+            .single();
 
           if (bookErr) throw bookErr;
 
           if (targetSlotId) {
             await supabase.from('timeslots').update({ status: 'booked' }).eq('id', targetSlotId);
           }
+
+          // Dispatch confirmation email to participant
+          sendBookingConfirmationEmail(
+            insertedBooking || bookingPayload,
+            event,
+            participant,
+            selectedSlot
+          );
 
           renderConfirmationScreen(container, event, selectedSlot, bookingRef, fullName, activeDateObj);
         } catch (err) {
@@ -435,29 +358,6 @@ async function renderBookingWorkspace(container, event) {
   }
 
   render();
-
-  // Clean real-time subscription
-  const channelName = 'realtime_slots_' + event.id + '_' + Date.now();
-  supabase.getChannels().forEach(ch => {
-    if (ch.topic.includes(event.id)) supabase.removeChannel(ch);
-  });
-
-  supabase
-    .channel(channelName)
-    .on(
-      'postgres_changes',
-      {
-        event: '*',
-        schema: 'public',
-        table: 'timeslots',
-        filter: 'event_id=eq.' + event.id
-      },
-      async () => {
-        timeslots = await loadTimeslots();
-        render();
-      }
-    )
-    .subscribe();
 }
 
 function renderConfirmationScreen(container, event, slot, bookingRef, participantName, activeDateObj) {
@@ -480,7 +380,7 @@ function renderConfirmationScreen(container, event, slot, bookingRef, participan
     + '<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>'
     + '</div>'
     + '<h1 style="font-size:1.75rem; font-weight:700; margin-bottom:0.25rem;">Booking Confirmed!</h1>'
-    + '<p style="color:var(--text-muted); font-size:0.9rem;">Thank you, ' + participantName + '. Your reservation is confirmed.</p>'
+    + '<p style="color:var(--text-muted); font-size:0.9rem;">Thank you, ' + participantName + '. A confirmation email has been dispatched.</p>'
     + '<div style="background:#f8fafc; border-radius:12px; padding:1.25rem; margin:1.5rem 0; border:1px solid var(--border-color); text-align:left;">'
     + '<div style="display:flex; justify-content:space-between; margin-bottom:0.75rem;">'
     + '<span style="color:var(--text-muted); font-size:0.85rem;">Booking Ref</span>'
