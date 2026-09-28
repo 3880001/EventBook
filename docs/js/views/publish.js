@@ -5,7 +5,6 @@ import { sendCancellationEmail, sendStatusUpdateEmail } from '../utils/emailServ
 export async function renderPublishPage(container, { param: eventId }) {
   container.innerHTML = '<div class="loader-center"><div class="spinner"></div></div>';
 
-  // 1. Fetch Event with Dates, Custom Fields, and Timeslots
   const { data: event, error: eventErr } = await supabase
     .from('events')
     .select('*, event_dates (*), event_custom_fields (*), timeslots (*)')
@@ -17,7 +16,6 @@ export async function renderPublishPage(container, { param: eventId }) {
     return;
   }
 
-  // 2. Fetch Bookings with Participant Profiles
   const { data: bookingsData } = await supabase
     .from('bookings')
     .select('id, booking_reference, status, attendance_confirmed, created_at, custom_responses, timeslot_id, participant_profiles ( full_name, email, phone )')
@@ -28,7 +26,6 @@ export async function renderPublishPage(container, { param: eventId }) {
   const timeslotsList = event.timeslots || [];
   const isFullDay = (event.event_dates && event.event_dates.some(d => d.is_full_day)) || (event.slot_duration_minutes >= 480);
 
-  // Compute Base URL for Public Booking Link
   const basePath = window.location.pathname.endsWith('/') 
     ? window.location.pathname 
     : window.location.pathname + '/';
@@ -38,7 +35,6 @@ export async function renderPublishPage(container, { param: eventId }) {
   let searchTerm = '';
 
   function renderView() {
-    // 3. Compute Metrics
     const confirmedCount = bookingsList.filter(b => b.status === 'confirmed' || b.status === 'attended' || b.status === 'running_late' || b.status === 'arrived').length;
     const cancelledCount = bookingsList.filter(b => b.status === 'cancelled').length;
     const noShowCount = bookingsList.filter(b => b.status === 'no_show').length;
@@ -51,7 +47,6 @@ export async function renderPublishPage(container, { param: eventId }) {
     const bookedSlots = confirmedCount;
     const availableSlots = Math.max(0, totalSlots - bookedSlots);
 
-    // Filter list by search term
     const filteredBookings = bookingsList.filter(b => {
       if (!searchTerm) return true;
       const term = searchTerm.toLowerCase();
@@ -61,7 +56,6 @@ export async function renderPublishPage(container, { param: eventId }) {
       return name.includes(term) || email.includes(term) || ref.includes(term);
     });
 
-    // Generate Table Rows using string concatenation to prevent syntax errors
     let tableRowsHtml = '';
     if (filteredBookings.length === 0) {
       tableRowsHtml = '<tr><td colspan="6" style="text-align:center; padding:2.5rem 1rem; color:var(--text-muted);">'
@@ -72,7 +66,6 @@ export async function renderPublishPage(container, { param: eventId }) {
         const b = filteredBookings[i];
         const participant = b.participant_profiles || {};
 
-        // Find slot timing
         let slotTimeStr = isFullDay ? 'Whole Day Session' : 'Scheduled Appointment';
         let slotObj = timeslotsList.find(s => s.id === b.timeslot_id);
         if (slotObj && slotObj.start_time) {
@@ -83,7 +76,6 @@ export async function renderPublishPage(container, { param: eventId }) {
           slotTimeStr = new Date(event.event_dates[0].event_date + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) + ' (Whole Day)';
         }
 
-        // Format Custom Responses
         let customInfoHtml = '<span style="color:var(--text-muted);">-</span>';
         if (b.custom_responses && typeof b.custom_responses === 'object' && Object.keys(b.custom_responses).length > 0) {
           const entries = Object.entries(b.custom_responses);
@@ -93,30 +85,24 @@ export async function renderPublishPage(container, { param: eventId }) {
         const currentStatus = b.attendance_confirmed ? 'attended' : b.status;
 
         tableRowsHtml += '<tr style="border-bottom:1px solid var(--border-color);">'
-          // Booking Ref
           + '<td style="padding:0.85rem 0.5rem; font-family:monospace; font-weight:700; color:var(--primary); white-space:nowrap;">'
           + '<a href="#/ticket/' + b.booking_reference + '" target="_blank" title="View digital ticket" style="text-decoration:none; color:inherit;">'
           + b.booking_reference + ' ↗'
           + '</a>'
           + '</td>'
-          // Attendee Name
           + '<td style="padding:0.85rem 0.5rem; font-weight:600; color:var(--text-primary);">'
           + (participant.full_name || 'Guest')
           + '</td>'
-          // Contact Details
           + '<td style="padding:0.85rem 0.5rem; font-size:0.85rem; color:var(--text-muted);">'
           + '<div>' + (participant.email || 'N/A') + '</div>'
           + (participant.phone ? '<div style="font-size:0.75rem; margin-top:2px;">' + participant.phone + '</div>' : '')
           + '</td>'
-          // Booked Slot / Time
           + '<td style="padding:0.85rem 0.5rem; font-size:0.85rem; white-space:nowrap;">'
           + '<span style="font-weight:600;">' + slotTimeStr + '</span>'
           + '</td>'
-          // Custom Fields
           + '<td style="padding:0.85rem 0.5rem;">'
           + customInfoHtml
           + '</td>'
-          // Status & Actions
           + '<td style="padding:0.85rem 0.5rem; text-align:right; white-space:nowrap;">'
           + '<div style="display:inline-flex; align-items:center; gap:0.5rem;">'
           + '<select class="form-control form-control-sm select-booking-status" data-id="' + b.id + '" data-slot-id="' + (b.timeslot_id || '') + '" style="font-size:0.8rem; padding:0.25rem 0.5rem; width:135px; border-radius:6px; font-weight:600;">'
@@ -136,7 +122,6 @@ export async function renderPublishPage(container, { param: eventId }) {
     }
 
     container.innerHTML = '<div style="max-width:1100px; margin:0 auto; padding-bottom:3rem;">'
-      // Header
       + '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem; flex-wrap:wrap; gap:1rem;">'
       + '<div>'
       + '<a href="#/events" style="text-decoration:none; color:var(--text-muted); font-size:0.875rem;">&larr; Back to Events</a>'
@@ -147,6 +132,7 @@ export async function renderPublishPage(container, { param: eventId }) {
       + '<p style="color:var(--text-muted); font-size:0.9rem;">' + (event.location_details || 'Online') + ' &bull; ' + (isFullDay ? 'Whole Day Event' : (event.slot_duration_minutes + 'm slots')) + '</p>'
       + '</div>'
       + '<div style="display:flex; gap:0.5rem; flex-wrap:wrap; align-items:center;">'
+      + '<button id="btn-email-setup" class="btn btn-secondary btn-sm" style="display:inline-flex; align-items:center; gap:0.35rem;">⚙️ Email Setup</button>'
       + '<a href="#/edit/' + event.id + '" class="btn btn-secondary btn-sm" style="display:inline-flex; align-items:center; gap:0.35rem;">'
       + '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>'
       + 'Edit Event'
@@ -241,6 +227,33 @@ export async function renderPublishPage(container, { param: eventId }) {
       + '</div>'
       + '</div>'
 
+      // Email Setup Modal (Hidden by default)
+      + '<div id="email-setup-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:9999; align-items:center; justify-content:center; padding:1rem;">'
+      + '<div class="card" style="max-width:500px; width:100%; padding:2rem; border-radius:12px; background:#fff;">'
+      + '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">'
+      + '<h3 style="margin:0; font-size:1.25rem;">⚙️ Email Service Configuration</h3>'
+      + '<button id="btn-close-modal" class="btn btn-secondary btn-sm" style="border:none; font-size:1.2rem; cursor:pointer;">✕</button>'
+      + '</div>'
+      + '<p style="color:var(--text-muted); font-size:0.85rem; margin-bottom:1.25rem;">Enter your free <a href="https://www.emailjs.com" target="_blank">EmailJS</a> keys so that booking confirmations and cancellation emails reach real inboxes.</p>'
+      + '<div class="form-group">'
+      + '<label class="form-label">Service ID</label>'
+      + '<input type="text" id="cfg-service-id" class="form-control" placeholder="e.g. service_xxxx" value="' + (localStorage.getItem('EMAILJS_SERVICE_ID') || '') + '" />'
+      + '</div>'
+      + '<div class="form-group">'
+      + '<label class="form-label">Template ID</label>'
+      + '<input type="text" id="cfg-template-id" class="form-control" placeholder="e.g. template_xxxx" value="' + (localStorage.getItem('EMAILJS_TEMPLATE_ID') || '') + '" />'
+      + '</div>'
+      + '<div class="form-group">'
+      + '<label class="form-label">Public Key</label>'
+      + '<input type="text" id="cfg-public-key" class="form-control" placeholder="e.g. user_xxxx or xxxx" value="' + (localStorage.getItem('EMAILJS_PUBLIC_KEY') || '') + '" />'
+      + '</div>'
+      + '<div style="display:flex; justify-content:space-between; margin-top:1.5rem; gap:0.5rem;">'
+      + '<button id="btn-test-email" class="btn btn-secondary btn-sm">Send Test Email</button>'
+      + '<button id="btn-save-email-cfg" class="btn btn-primary btn-sm">Save Email Keys</button>'
+      + '</div>'
+      + '</div>'
+      + '</div>'
+
       + '</div>';
 
     bindInteractions();
@@ -273,6 +286,72 @@ export async function renderPublishPage(container, { param: eventId }) {
       };
     }
 
+    // Email Setup Modal Toggle & Save
+    const emailModal = document.getElementById('email-setup-modal');
+    const openEmailBtn = document.getElementById('btn-email-setup');
+    const closeEmailBtn = document.getElementById('btn-close-modal');
+
+    if (openEmailBtn) openEmailBtn.onclick = () => { emailModal.style.display = 'flex'; };
+    if (closeEmailBtn) closeEmailBtn.onclick = () => { emailModal.style.display = 'none'; };
+
+    const saveEmailBtn = document.getElementById('btn-save-email-cfg');
+    if (saveEmailBtn) {
+      saveEmailBtn.onclick = () => {
+        const sid = document.getElementById('cfg-service-id').value.trim();
+        const tid = document.getElementById('cfg-template-id').value.trim();
+        const pkey = document.getElementById('cfg-public-key').value.trim();
+        localStorage.setItem('EMAILJS_SERVICE_ID', sid);
+        localStorage.setItem('EMAILJS_TEMPLATE_ID', tid);
+        localStorage.setItem('EMAILJS_PUBLIC_KEY', pkey);
+        toast('Email configuration saved!', 'success');
+        emailModal.style.display = 'none';
+      };
+    }
+
+    const testEmailBtn = document.getElementById('btn-test-email');
+    if (testEmailBtn) {
+      testEmailBtn.onclick = async () => {
+        const sid = document.getElementById('cfg-service-id').value.trim();
+        const tid = document.getElementById('cfg-template-id').value.trim();
+        const pkey = document.getElementById('cfg-public-key').value.trim();
+        if (!sid || !tid || !pkey) return alert('Please enter all 3 EmailJS keys first.');
+
+        testEmailBtn.innerText = 'Sending...';
+        testEmailBtn.disabled = true;
+
+        try {
+          const res = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              service_id: sid,
+              template_id: tid,
+              user_id: pkey,
+              template_params: {
+                to_email: 'test@example.com',
+                to_name: 'Organizer',
+                subject: 'Test EventBook Email Notification',
+                message_html: '<p>Test email from your EventBook app is functioning properly!</p>'
+              }
+            })
+          });
+
+          if (res.ok) {
+            alert('✓ Test email dispatched successfully via EmailJS!');
+          } else {
+            const errText = await res.text();
+            alert('EmailJS error: ' + errText);
+          }
+        } catch (e) {
+          alert('Network error testing email: ' + e.message);
+        } finally {
+          testEmailBtn.innerText = 'Send Test Email';
+          testEmailBtn.disabled = false;
+        }
+      };
+    }
+
+    // Export CSV
     const exportCsvBtn = document.getElementById('btn-export-csv');
     if (exportCsvBtn) {
       exportCsvBtn.onclick = () => {
@@ -312,7 +391,7 @@ export async function renderPublishPage(container, { param: eventId }) {
       };
     }
 
-    // Status Selector Change Handler with Email Triggers
+    // Status Selector Change Handler
     document.querySelectorAll('.select-booking-status').forEach(sel => {
       sel.onchange = async () => {
         const bookingId = sel.dataset.id;
@@ -336,14 +415,12 @@ export async function renderPublishPage(container, { param: eventId }) {
           return;
         }
 
-        // If cancelled, release timeslot back to available
         if (newStatus === 'cancelled' && slotId) {
           await supabase.from('timeslots').update({ status: 'available' }).eq('id', slotId);
         } else if (newStatus !== 'cancelled' && slotId) {
           await supabase.from('timeslots').update({ status: 'booked' }).eq('id', slotId);
         }
 
-        // Send Email Notification to Attendee
         const bItem = bookingsList.find(b => b.id === bookingId);
         const participantObj = bItem?.participant_profiles;
         if (participantObj) {
@@ -364,7 +441,7 @@ export async function renderPublishPage(container, { param: eventId }) {
       };
     });
 
-    // Delete Booking Button Handler with Cancellation Notice
+    // Delete Booking Button Handler
     document.querySelectorAll('.btn-delete-booking').forEach(btn => {
       btn.onclick = async () => {
         const bookingId = btn.dataset.id;
@@ -377,7 +454,6 @@ export async function renderPublishPage(container, { param: eventId }) {
 
         btn.disabled = true;
 
-        // Send cancellation notice before deletion
         const bItem = bookingsList.find(b => b.id === bookingId);
         if (bItem?.participant_profiles) {
           sendCancellationEmail(bItem, event, bItem.participant_profiles);
@@ -394,7 +470,6 @@ export async function renderPublishPage(container, { param: eventId }) {
           return;
         }
 
-        // Release slot back to available
         if (slotId) {
           await supabase.from('timeslots').update({ status: 'available' }).eq('id', slotId);
         }
