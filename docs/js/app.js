@@ -1,13 +1,13 @@
-import { Router } from './router.js?v=2';
-import { renderDashboard } from './views/dashboard.js?v=2';
-import { renderWizard } from './views/wizard.js?v=2';
-import { renderPublishPage } from './views/publish.js?v=2';
-import { renderBookingPage } from './views/booking.js?v=2';
-import { renderAdminDashboard } from './views/admin.js?v=2';
-import { renderAnalyticsPage } from './views/analytics.js?v=2';
-import { renderFeedbackPage } from './views/feedback.js?v=2';
-import { renderAuthPage } from './views/auth.js?v=2';
-import { supabase } from './supabaseClient.js?v=2';
+import { Router } from './router.js?v=3';
+import { renderDashboard } from './views/dashboard.js?v=3';
+import { renderWizard } from './views/wizard.js?v=3';
+import { renderPublishPage } from './views/publish.js?v=3';
+import { renderBookingPage } from './views/booking.js?v=3';
+import { renderAdminDashboard } from './views/admin.js?v=3';
+import { renderAnalyticsPage } from './views/analytics.js?v=3';
+import { renderFeedbackPage } from './views/feedback.js?v=3';
+import { renderAuthPage } from './views/auth.js?v=3';
+import { supabase } from './supabaseClient.js?v=3';
 
 const appRoot = document.getElementById('app-root');
 
