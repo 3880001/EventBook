@@ -227,29 +227,29 @@ export async function renderPublishPage(container, { param: eventId }) {
       + '</div>'
       + '</div>'
 
-      // Email Setup Modal (Hidden by default)
+      // Brevo Email Setup Modal
       + '<div id="email-setup-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:9999; align-items:center; justify-content:center; padding:1rem;">'
       + '<div class="card" style="max-width:500px; width:100%; padding:2rem; border-radius:12px; background:#fff;">'
       + '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">'
-      + '<h3 style="margin:0; font-size:1.25rem;">⚙️ Email Service Configuration</h3>'
+      + '<h3 style="margin:0; font-size:1.25rem;">⚙️ Brevo Email Service</h3>'
       + '<button id="btn-close-modal" class="btn btn-secondary btn-sm" style="border:none; font-size:1.2rem; cursor:pointer;">✕</button>'
       + '</div>'
-      + '<p style="color:var(--text-muted); font-size:0.85rem; margin-bottom:1.25rem;">Enter your free <a href="https://www.emailjs.com" target="_blank">EmailJS</a> keys so that booking confirmations and cancellation emails reach real inboxes.</p>'
+      + '<p style="color:var(--text-muted); font-size:0.85rem; margin-bottom:1.25rem;">Configure your free Brevo API key and sender address. All emails will dispatch reliably through your account.</p>'
       + '<div class="form-group">'
-      + '<label class="form-label">Service ID</label>'
-      + '<input type="text" id="cfg-service-id" class="form-control" placeholder="e.g. service_xxxx" value="' + (localStorage.getItem('EMAILJS_SERVICE_ID') || '') + '" />'
+      + '<label class="form-label">Brevo API Key (xkeysib-...)</label>'
+      + '<input type="password" id="cfg-brevo-key" class="form-control" placeholder="xkeysib-..." />'
       + '</div>'
       + '<div class="form-group">'
-      + '<label class="form-label">Template ID</label>'
-      + '<input type="text" id="cfg-template-id" class="form-control" placeholder="e.g. template_xxxx" value="' + (localStorage.getItem('EMAILJS_TEMPLATE_ID') || '') + '" />'
+      + '<label class="form-label">Verified Brevo Sender Email</label>'
+      + '<input type="email" id="cfg-brevo-sender" class="form-control" placeholder="your-email@gmail.com" />'
       + '</div>'
       + '<div class="form-group">'
-      + '<label class="form-label">Public Key</label>'
-      + '<input type="text" id="cfg-public-key" class="form-control" placeholder="e.g. user_xxxx or xxxx" value="' + (localStorage.getItem('EMAILJS_PUBLIC_KEY') || '') + '" />'
+      + '<label class="form-label">Sender Name</label>'
+      + '<input type="text" id="cfg-brevo-name" class="form-control" placeholder="EventBook" value="EventBook" />'
       + '</div>'
       + '<div style="display:flex; justify-content:space-between; margin-top:1.5rem; gap:0.5rem;">'
       + '<button id="btn-test-email" class="btn btn-secondary btn-sm">Send Test Email</button>'
-      + '<button id="btn-save-email-cfg" class="btn btn-primary btn-sm">Save Email Keys</button>'
+      + '<button id="btn-save-email-cfg" class="btn btn-primary btn-sm">Save Brevo Settings</button>'
       + '</div>'
       + '</div>'
       + '</div>'
@@ -286,67 +286,77 @@ export async function renderPublishPage(container, { param: eventId }) {
       };
     }
 
-    // Email Setup Modal Toggle & Save
+    // Email Modal Handlers
     const emailModal = document.getElementById('email-setup-modal');
     const openEmailBtn = document.getElementById('btn-email-setup');
     const closeEmailBtn = document.getElementById('btn-close-modal');
 
-    if (openEmailBtn) openEmailBtn.onclick = () => { emailModal.style.display = 'flex'; };
+    if (openEmailBtn) {
+      openEmailBtn.onclick = async () => {
+        const { data: sData } = await supabase.from('app_settings').select('*');
+        if (sData) {
+          const keyRow = sData.find(r => r.key === 'brevo_api_key');
+          const emailRow = sData.find(r => r.key === 'brevo_sender_email');
+          const nameRow = sData.find(r => r.key === 'brevo_sender_name');
+          if (keyRow) document.getElementById('cfg-brevo-key').value = keyRow.value;
+          if (emailRow) document.getElementById('cfg-brevo-sender').value = emailRow.value;
+          if (nameRow) document.getElementById('cfg-brevo-name').value = nameRow.value;
+        }
+        emailModal.style.display = 'flex';
+      };
+    }
+
     if (closeEmailBtn) closeEmailBtn.onclick = () => { emailModal.style.display = 'none'; };
 
     const saveEmailBtn = document.getElementById('btn-save-email-cfg');
     if (saveEmailBtn) {
-      saveEmailBtn.onclick = () => {
-        const sid = document.getElementById('cfg-service-id').value.trim();
-        const tid = document.getElementById('cfg-template-id').value.trim();
-        const pkey = document.getElementById('cfg-public-key').value.trim();
-        localStorage.setItem('EMAILJS_SERVICE_ID', sid);
-        localStorage.setItem('EMAILJS_TEMPLATE_ID', tid);
-        localStorage.setItem('EMAILJS_PUBLIC_KEY', pkey);
-        toast('Email configuration saved!', 'success');
-        emailModal.style.display = 'none';
+      saveEmailBtn.onclick = async () => {
+        const apiKey = document.getElementById('cfg-brevo-key').value.trim();
+        const senderEmail = document.getElementById('cfg-brevo-sender').value.trim();
+        const senderName = document.getElementById('cfg-brevo-name').value.trim() || 'EventBook';
+
+        if (!apiKey || !senderEmail) return alert('Please enter both your Brevo API key and sender email.');
+
+        saveEmailBtn.disabled = true;
+        const { error } = await supabase.rpc('save_brevo_settings', {
+          p_api_key: apiKey,
+          p_sender_email: senderEmail,
+          p_sender_name: senderName
+        });
+
+        saveEmailBtn.disabled = false;
+        if (error) {
+          toast('Error saving settings: ' + error.message, 'danger');
+        } else {
+          toast('Brevo credentials saved successfully!', 'success');
+          emailModal.style.display = 'none';
+        }
       };
     }
 
     const testEmailBtn = document.getElementById('btn-test-email');
     if (testEmailBtn) {
       testEmailBtn.onclick = async () => {
-        const sid = document.getElementById('cfg-service-id').value.trim();
-        const tid = document.getElementById('cfg-template-id').value.trim();
-        const pkey = document.getElementById('cfg-public-key').value.trim();
-        if (!sid || !tid || !pkey) return alert('Please enter all 3 EmailJS keys first.');
+        const targetEmail = prompt('Enter recipient email for the test message:');
+        if (!targetEmail) return;
 
-        testEmailBtn.innerText = 'Sending...';
+        testEmailBtn.innerText = 'Dispatching...';
         testEmailBtn.disabled = true;
 
-        try {
-          const res = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              service_id: sid,
-              template_id: tid,
-              user_id: pkey,
-              template_params: {
-                to_email: 'test@example.com',
-                to_name: 'Organizer',
-                subject: 'Test EventBook Email Notification',
-                message_html: '<p>Test email from your EventBook app is functioning properly!</p>'
-              }
-            })
-          });
+        const { data, error } = await supabase.rpc('send_brevo_email', {
+          p_recipient_email: targetEmail,
+          p_recipient_name: 'Tester',
+          p_subject: 'EventBook Brevo Connection Test',
+          p_html_content: '<h2>🎉 Brevo Connection Successful!</h2><p>Your EventBook application can now deliver emails to participant inboxes.</p>'
+        });
 
-          if (res.ok) {
-            alert('✓ Test email dispatched successfully via EmailJS!');
-          } else {
-            const errText = await res.text();
-            alert('EmailJS error: ' + errText);
-          }
-        } catch (e) {
-          alert('Network error testing email: ' + e.message);
-        } finally {
-          testEmailBtn.innerText = 'Send Test Email';
-          testEmailBtn.disabled = false;
+        testEmailBtn.innerText = 'Send Test Email';
+        testEmailBtn.disabled = false;
+
+        if (error || (data && data.success === false)) {
+          alert('Test failed: ' + (error?.message || data?.error));
+        } else {
+          alert('✓ Test email dispatched via Brevo! Please check ' + targetEmail);
         }
       };
     }
@@ -391,7 +401,7 @@ export async function renderPublishPage(container, { param: eventId }) {
       };
     }
 
-    // Status Selector Change Handler
+    // Status Selector Change Handler with Brevo Notifications
     document.querySelectorAll('.select-booking-status').forEach(sel => {
       sel.onchange = async () => {
         const bookingId = sel.dataset.id;
@@ -436,12 +446,12 @@ export async function renderPublishPage(container, { param: eventId }) {
           bItem.attendance_confirmed = isAttended;
         }
 
-        toast('Status updated to ' + newStatus + ' and participant notified!', 'success');
+        toast('Status updated to ' + newStatus + ' & email dispatched!', 'success');
         renderView();
       };
     });
 
-    // Delete Booking Button Handler
+    // Delete Booking Handler with Cancellation Notice
     document.querySelectorAll('.btn-delete-booking').forEach(btn => {
       btn.onclick = async () => {
         const bookingId = btn.dataset.id;
