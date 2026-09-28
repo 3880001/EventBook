@@ -268,7 +268,7 @@ async function renderBookingWorkspace(container, event) {
     if (fullDayBtn) {
       fullDayBtn.onclick = () => {
         selectedSlot = currentSlots[0] || {
-          id: 'fullday-virtual',
+          id: null,
           event_id: event.id,
           start_time: (activeDateObj && activeDateObj.event_date ? activeDateObj.event_date : new Date().toISOString().split('T')[0]) + 'T09:00:00'
         };
@@ -321,31 +321,36 @@ async function renderBookingWorkspace(container, event) {
 
           if (partErr) throw partErr;
 
-          let targetSlotId = selectedSlot.id;
-          if (targetSlotId === 'fullday-virtual' || !targetSlotId) {
-            const freshSlots = await loadTimeslots();
-            targetSlotId = freshSlots[0] ? freshSlots[0].id : null;
-          }
+          // Determine timeslot ID (valid UUID or null for full-day)
+          let targetSlotId = (selectedSlot && selectedSlot.id && selectedSlot.id !== 'fullday-virtual') 
+            ? selectedSlot.id 
+            : (currentSlots[0] ? currentSlots[0].id : null);
 
           const bookingRef = 'EB-' + Math.random().toString(36).substring(2, 8).toUpperCase();
+          
+          const bookingPayload = {
+            event_id: event.id,
+            participant_id: participant.id,
+            booking_reference: bookingRef,
+            status: 'confirmed',
+            custom_responses: customResponses
+          };
+
+          if (targetSlotId) {
+            bookingPayload.timeslot_id = targetSlotId;
+          }
+
           const { error: bookErr } = await supabase
             .from('bookings')
-            .insert({
-              event_id: event.id,
-              timeslot_id: targetSlotId,
-              participant_id: participant.id,
-              booking_reference: bookingRef,
-              status: 'confirmed',
-              custom_responses: customResponses
-            });
+            .insert(bookingPayload);
 
           if (bookErr) throw bookErr;
 
-          if (targetSlotId && targetSlotId !== 'fullday-virtual') {
+          if (targetSlotId) {
             await supabase.from('timeslots').update({ status: 'booked' }).eq('id', targetSlotId);
           }
 
-          renderConfirmationScreen(container, event, selectedSlot, bookingRef, fullName);
+          renderConfirmationScreen(container, event, selectedSlot, bookingRef, fullName, activeDateObj);
         } catch (err) {
           toast('Booking failed: ' + err.message, 'danger');
           submitBtn.disabled = false;
@@ -382,8 +387,14 @@ async function renderBookingWorkspace(container, event) {
     .subscribe();
 }
 
-function renderConfirmationScreen(container, event, slot, bookingRef, participantName) {
-  const startStr = new Date(slot.start_time).toLocaleString([], { dateStyle: 'medium' });
+function renderConfirmationScreen(container, event, slot, bookingRef, participantName, activeDateObj) {
+  let startStr = 'Whole Day Session';
+  if (slot && slot.start_time) {
+    startStr = new Date(slot.start_time).toLocaleString([], { dateStyle: 'medium' });
+  } else if (activeDateObj && activeDateObj.event_date) {
+    startStr = new Date(activeDateObj.event_date + 'T00:00:00').toLocaleDateString(undefined, { dateStyle: 'medium' });
+  }
+
   const qrCodeData = generateQRCodeDataURI(bookingRef);
 
   container.innerHTML = '<div style="max-width:550px; margin:2rem auto; padding:0 1rem;">'
@@ -404,7 +415,7 @@ function renderConfirmationScreen(container, event, slot, bookingRef, participan
     + '</div>'
     + '<div style="display:flex; justify-content:space-between; margin-bottom:0.75rem;">'
     + '<span style="color:var(--text-muted); font-size:0.85rem;">Date</span>'
-    + '<span style="font-weight:600;">' + startStr + ' (Whole Day)</span>'
+    + '<span style="font-weight:600;">' + startStr + '</span>'
     + '</div>'
     + '<div style="display:flex; justify-content:space-between;">'
     + '<span style="color:var(--text-muted); font-size:0.85rem;">Location</span>'
