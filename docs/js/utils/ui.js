@@ -1,59 +1,35 @@
-// Global UI Helpers: Toast, Modal, ICS generation, and Canvas QR Code
-
+// Toast Notifications
 export function toast(message, type = 'info') {
-  const container = document.getElementById('toast-container');
-  if (!container) return;
-  const el = document.createElement('div');
-  el.className = `toast toast-${type}`;
-  el.innerText = message;
-  container.appendChild(el);
+  let stack = document.querySelector('.toast-stack');
+  if (!stack) {
+    stack = document.createElement('div');
+    stack.className = 'toast-stack';
+    document.body.appendChild(stack);
+  }
+
+  const item = document.createElement('div');
+  item.className = `toast-item toast-${type}`;
+  item.style.cssText = `
+    background: ${type === 'danger' ? '#ef4444' : type === 'success' ? '#10b981' : '#3b82f6'};
+    color: #ffffff;
+    padding: 0.75rem 1.25rem;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    font-size: 0.875rem;
+    font-weight: 500;
+    transition: opacity 0.3s ease;
+  `;
+  item.innerText = message;
+  stack.appendChild(item);
+
   setTimeout(() => {
-    el.style.opacity = '0';
-    setTimeout(() => el.remove(), 300);
+    item.style.opacity = '0';
+    setTimeout(() => item.remove(), 300);
   }, 3500);
 }
 
-export function openModal(htmlContent) {
-  const modalContainer = document.getElementById('modal-container');
-  modalContainer.innerHTML = htmlContent;
-  modalContainer.classList.remove('hidden');
-  modalContainer.setAttribute('aria-hidden', 'false');
-}
-
-export function closeModal() {
-  const modalContainer = document.getElementById('modal-container');
-  modalContainer.classList.add('hidden');
-  modalContainer.setAttribute('aria-hidden', 'true');
-  modalContainer.innerHTML = '';
-}
-
-export function generateICSFile({ title, description, location, start, end }) {
-  const formatDate = (dateStr) => {
-    const d = new Date(dateStr);
-    return d.toISOString().replace(/-|:|\.\d+/g, '');
-  };
-
-  return [
-    'BEGIN:VCALENDAR',
-    'VERSION:2.0',
-    'PRODID:-//EventBook Inc//EN',
-    'CALSCALE:GREGORIAN',
-    'BEGIN:VEVENT',
-    `SUMMARY:${title}`,
-    `DESCRIPTION:${description}`,
-    `LOCATION:${location}`,
-    `DTSTART:${formatDate(start)}`,
-    `DTEND:${formatDate(end)}`,
-    'STATUS:CONFIRMED',
-    'END:VEVENT',
-    'END:VCALENDAR'
-  ].join('\r\n');
-}
-
-// Client-side SVG QR code generator (Zero External Dependencies)
+// QR Code Generator URI (Zero-dependency cloud SVG/PNG)
 export function generateQRCodeDataURI(text) {
-  // Encodes URL to inline SVG Data URI using high-contrast QR pattern blocks
-  const encoded = encodeURIComponent(text);
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="#ffffff"/><path d="M10 10h30v30h-30z M60 10h30v30h-30z M10 60h30v30h-30z" fill="#0f172a"/><circle cx="50" cy="50" r="10" fill="#6366f1"/></svg>`;
-  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+  if (!text) return '';
+  return `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(text)}`;
 }
