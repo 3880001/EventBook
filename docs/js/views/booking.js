@@ -3,7 +3,7 @@ import { toast, generateQRCodeDataURI } from '../utils/ui.js';
 import { sendBookingConfirmationEmail } from '../utils/emailService.js';
 import { formatLocationHtml } from '../utils/location.js';
 
-export async function renderBookingPage(container, { param: slug }) {
+export async function renderBookingPage(container, { param: slug, query }) {
   if (!slug) {
     container.innerHTML = '<div class="card"><p style="color:var(--danger);">Invalid booking link.</p></div>';
     return;
@@ -28,54 +28,76 @@ export async function renderBookingPage(container, { param: slug }) {
   if (event.status !== 'published') {
     container.innerHTML = '<div class="card" style="text-align:center; padding:3rem 1rem;">'
       + '<h2 style="font-size:1.5rem; font-weight:700;">Event Unavailable</h2>'
-      + '<p style="color:var(--text-muted); margin-top:0.5rem;">This event is currently in draft mode or unpublished.</p>'
+      + '<p style="color:var(--text-muted); margin-top:0.5rem;">This event is currently unpublished or in draft mode.</p>'
       + '</div>';
     return;
   }
 
+  const rawPasscode = (event.passcode_plain || '').trim();
+  const hasPasscode = rawPasscode.length > 0;
   const passcodeStorageKey = 'passcode_unlocked_' + event.id;
-  const isUnlocked = !event.passcode_plain || sessionStorage.getItem(passcodeStorageKey) === 'true';
+
+  // Support intentional manual relocking via ?relock=true or explicit lock action
+  if (query && query.get('relock') === 'true') {
+    sessionStorage.removeItem(passcodeStorageKey);
+  }
+
+  const isUnlocked = !hasPasscode || sessionStorage.getItem(passcodeStorageKey) === 'true';
 
   if (!isUnlocked) {
-    renderPasscodeGate(container, event, () => renderBookingPage(container, { param: slug }));
+    renderPasscodeGate(container, event, rawPasscode, () => {
+      sessionStorage.setItem(passcodeStorageKey, 'true');
+      renderBookingPage(container, { param: slug, query: new URLSearchParams() });
+    });
     return;
   }
 
-  await renderBookingWorkspace(container, event);
+  await renderBookingWorkspace(container, event, hasPasscode);
 }
 
-function renderPasscodeGate(container, event, onUnlock) {
-  container.innerHTML = '<div style="max-width:420px; margin:3rem auto; padding:0 1rem;">'
-    + '<div class="card" style="text-align:center; padding:2rem;">'
-    + '<div style="display:inline-flex; align-items:center; justify-content:center; width:52px; height:52px; border-radius:14px; background:var(--primary-light); color:var(--primary); margin-bottom:1rem;">'
-    + '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>'
+function renderPasscodeGate(container, event, expectedPasscode, onUnlock) {
+  container.innerHTML = '<div style="max-width:440px; margin:4rem auto; padding:0 1rem;">'
+    + '<div class="card" style="text-align:center; padding:2.5rem 1.75rem; border:1px solid var(--border-color); border-radius:16px; box-shadow:0 10px 30px rgba(0,0,0,0.06);">'
+    + '<div style="display:inline-flex; align-items:center; justify-content:center; width:64px; height:64px; border-radius:18px; background:var(--primary-light); color:var(--primary); font-size:1.75rem; margin-bottom:1.25rem;">'
+    + '🔒'
     + '</div>'
-    + '<h1 style="font-size:1.5rem; font-weight:700; margin-bottom:0.25rem;">' + event.name + '</h1>'
-    + '<p style="color:var(--text-muted); font-size:0.875rem; margin-bottom:1.5rem;">This event requires a passcode to view and book.</p>'
+    + '<h1 style="font-size:1.45rem; font-weight:700; margin:0 0 0.5rem 0;">Private Event</h1>'
+    + '<p style="color:var(--text-muted); font-size:0.9rem; margin-bottom:1.75rem; line-height:1.5;">'
+    + 'This event is protected by the organizer. Please enter the passcode to access event details and reserve a timeslot.'
+    + '</p>'
     + '<form id="passcode-form">'
     + '<div class="form-group" style="text-align:left;">'
-    + '<label class="form-label">Event Passcode</label>'
-    + '<input type="password" id="input-event-passcode" class="form-control" placeholder="Enter passcode" required autofocus />'
+    + '<label class="form-label" style="font-weight:600;">Event Passcode</label>'
+    + '<input type="password" id="input-event-passcode" class="form-control" placeholder="Enter access passcode" autocomplete="off" required autofocus style="text-align:center; font-size:1.15rem; letter-spacing:1.5px; font-weight:700; padding:0.65rem;" />'
     + '</div>'
-    + '<button type="submit" class="btn btn-primary" style="width:100%; margin-top:0.5rem;">Unlock Booking</button>'
+    + '<button type="submit" id="btn-unlock-passcode" class="btn btn-primary" style="width:100%; padding:0.75rem; font-size:1rem; font-weight:600; margin-top:0.5rem;">'
+    + 'Unlock & View Details &rarr;'
+    + '</button>'
     + '</form>'
     + '</div>'
     + '</div>';
 
-  document.getElementById('passcode-form').onsubmit = (e) => {
-    e.preventDefault();
-    const entered = document.getElementById('input-event-passcode').value.trim();
-    if (entered === event.passcode_plain) {
-      sessionStorage.setItem('passcode_unlocked_' + event.id, 'true');
-      toast('Passcode accepted!', 'success');
-      onUnlock();
-    } else {
-      toast('Incorrect passcode. Please try again.', 'danger');
-    }
-  };
+  const form = document.getElementById('passcode-form');
+  if (form) {
+    form.onsubmit = (e) => {
+      e.preventDefault();
+      const entered = (document.getElementById('input-event-passcode')?.value || '').trim();
+      if (entered.toLowerCase() === expectedPasscode.toLowerCase()) {
+        toast('Passcode accepted!', 'success');
+        onUnlock();
+      } else {
+        toast('Incorrect passcode. Please try again.', 'danger');
+        const inp = document.getElementById('input-event-passcode');
+        if (inp) {
+          inp.value = '';
+          inp.focus();
+        }
+      }
+    };
+  }
 }
 
-async function renderBookingWorkspace(container, event) {
+async function renderBookingWorkspace(container, event, hasPasscode) {
   let selectedSlot = null;
   let activeDateId = event.event_dates && event.event_dates[0] ? event.event_dates[0].id : null;
   let activeTrack = 'all';
@@ -179,7 +201,7 @@ async function renderBookingWorkspace(container, event) {
       slotsDisplayHtml = '<div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(145px, 1fr)); gap:0.65rem; margin-top:0.5rem;">' + slotButtons + '</div>';
     }
 
-    // Custom Fields
+    // Custom Registration Questions
     let customFieldsHtml = '';
     for (let i = 0; i < customFields.length; i++) {
       const cf = customFields[i];
@@ -191,16 +213,25 @@ async function renderBookingWorkspace(container, event) {
 
     const formDisplay = selectedSlot ? 'block' : 'none';
     const durationLabel = isFullDayEvent ? 'Whole Day Event' : (event.slot_duration_minutes + ' Mins Duration');
-    const passcodeBadge = event.passcode_plain ? '<div style="display:flex; align-items:center; gap:0.35rem;"><span>🔒</span> Passcode Protected</div>' : '';
+    
+    // Security Indicator & Relock Trigger
+    const passcodeStatusBadge = hasPasscode
+      ? '<div style="display:inline-flex; align-items:center; gap:0.4rem; background:#ecfdf5; color:#065f46; padding:3px 10px; border-radius:6px; font-size:0.8rem; font-weight:600;">'
+        + '<span>🔒 Passcode Unlocked</span>'
+        + '<button type="button" id="btn-relock-event" style="background:none; border:none; color:#047857; text-decoration:underline; font-size:0.8rem; cursor:pointer; font-weight:600; padding:0 2px;" title="Relock this event to test the gate">[Lock 🔒]</button>'
+        + '</div>'
+      : '';
 
     container.innerHTML = '<div style="max-width:850px; margin:0 auto; padding:1rem 0;">'
       + '<div class="card" style="margin-bottom:1.5rem;">'
-      + '<h1 style="font-size:1.75rem; font-weight:700;">' + event.name + '</h1>'
-      + '<p style="color:var(--text-muted); margin-top:0.35rem; line-height:1.5;">' + (event.description || 'Secure your reservation below.') + '</p>'
+      + '<div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:0.75rem;">'
+      + '<h1 style="font-size:1.75rem; font-weight:700; margin:0;">' + event.name + '</h1>'
+      + passcodeStatusBadge
+      + '</div>'
+      + '<p style="color:var(--text-muted); margin-top:0.5rem; line-height:1.5;">' + (event.description || 'Secure your reservation below.') + '</p>'
       + '<div style="display:flex; gap:1.25rem; margin-top:1rem; flex-wrap:wrap; font-size:0.875rem; color:var(--text-muted);">'
       + '<div style="display:flex; align-items:center; gap:0.35rem;">' + formatLocationHtml(event.location_details, 'Online') + '</div>'
       + '<div style="display:flex; align-items:center; gap:0.35rem;"><span>⏱️</span> ' + durationLabel + '</div>'
-      + passcodeBadge
       + '</div>'
       + '</div>'
       + '<div class="card" style="margin-bottom:1.5rem;">'
@@ -238,6 +269,16 @@ async function renderBookingWorkspace(container, event) {
   }
 
   function bindActions(currentSlots, activeDateObj) {
+    // Relock Button Handler
+    const relockBtn = document.getElementById('btn-relock-event');
+    if (relockBtn) {
+      relockBtn.onclick = () => {
+        sessionStorage.removeItem('passcode_unlocked_' + event.id);
+        toast('Event locked.', 'info');
+        renderBookingPage(container, { param: event.slug, query: new URLSearchParams() });
+      };
+    }
+
     document.querySelectorAll('.btn-filter-date').forEach(btn => {
       btn.onclick = () => {
         activeDateId = btn.dataset.id;
