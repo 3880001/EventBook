@@ -68,6 +68,21 @@ export async function renderWizard(container, { param: eventId }) {
     };
   }
 
+  function syncStep3Data() {
+    const passInput = document.getElementById('w-passcode');
+    if (passInput) {
+      formData.passcode_plain = passInput.value.trim();
+    }
+    const labels = document.querySelectorAll('.input-cf-label');
+    const reqs = document.querySelectorAll('.input-cf-req');
+    const synced = [];
+    labels.forEach((lbl, i) => {
+      const val = lbl.value.trim();
+      if (val) synced.push({ label: val, required: reqs[i]?.checked || false });
+    });
+    formData.custom_fields = synced;
+  }
+
   function render() {
     let stepContent = '';
 
@@ -187,11 +202,15 @@ export async function renderWizard(container, { param: eventId }) {
 
       stepContent = '<div class="card">'
         + '<h2 style="font-size:1.25rem; font-weight:700; margin-bottom:1.25rem;">Step 3: Access, Reminders & Questions</h2>'
+        
+        // Passcode Protection Input
         + '<div class="form-group">'
-        + '<label class="form-label">Passcode Protection (Optional)</label>'
-        + '<input type="text" id="w-passcode" class="form-control" placeholder="Leave empty for public access" value="' + (formData.passcode_plain || '') + '" />'
-        + '<small style="color:var(--text-muted);">Participants must enter this passcode before choosing a slot</small>'
+        + '<label class="form-label" style="font-weight:600;">🔒 Passcode Protection (Optional)</label>'
+        + '<input type="text" id="w-passcode" class="form-control" placeholder="Leave empty for public access" value="' + (formData.passcode_plain || '') + '" autocomplete="off" />'
+        + '<small style="color:var(--text-muted);">When set, participants must enter this passcode before event details and timeslots are revealed.</small>'
         + '</div>'
+
+        // Multi-Reminder Management Card
         + '<div class="card" style="background:#f8fafc; border:1px solid var(--border-color); padding:1.25rem; margin:1.5rem 0; border-radius:10px;">'
         + '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.75rem; flex-wrap:wrap; gap:0.5rem;">'
         + '<div>'
@@ -202,6 +221,8 @@ export async function renderWizard(container, { param: eventId }) {
         + '</div>'
         + '<div id="reminders-list-box">' + remindersListHtml + '</div>'
         + '</div>'
+
+        // Custom Registration Questions
         + '<div class="form-group">'
         + '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">'
         + '<label class="form-label" style="margin:0;">Custom Registration Questions</label>'
@@ -209,6 +230,7 @@ export async function renderWizard(container, { param: eventId }) {
         + '</div>'
         + '<div id="cf-container">' + customFieldsHtml + '</div>'
         + '</div>'
+
         + '<div style="display:flex; justify-content:space-between; margin-top:2rem;">'
         + '<button type="button" id="btn-prev-step" class="btn btn-secondary">&larr; Back</button>'
         + '<button type="button" id="btn-save-event" class="btn btn-primary">' + (isEdit ? 'Update Event' : 'Save & Publish Event') + '</button>'
@@ -236,6 +258,15 @@ export async function renderWizard(container, { param: eventId }) {
         attachLocationAutocomplete(locInput, suggBox, prevBox, (selectedAddress) => {
           formData.location_details = selectedAddress;
         });
+      }
+    }
+
+    if (currentStep === 3) {
+      const passInput = document.getElementById('w-passcode');
+      if (passInput) {
+        passInput.oninput = () => {
+          formData.passcode_plain = passInput.value.trim();
+        };
       }
     }
 
@@ -303,14 +334,17 @@ export async function renderWizard(container, { param: eventId }) {
     const btnPrev = document.getElementById('btn-prev-step');
     if (btnPrev) {
       btnPrev.onclick = () => {
+        if (currentStep === 3) syncStep3Data();
         currentStep = Math.max(1, currentStep - 1);
         render();
       };
     }
 
+    // Reminders Handlers with Step 3 Sync
     const btnAddReminder = document.getElementById('btn-add-reminder');
     if (btnAddReminder) {
       btnAddReminder.onclick = () => {
+        syncStep3Data();
         if (formData.reminders.length >= 3) return;
         const defaultSchedules = ['24h', '2h', '30m'];
         const nextSchedule = defaultSchedules[formData.reminders.length] || '30m';
@@ -321,6 +355,7 @@ export async function renderWizard(container, { param: eventId }) {
 
     document.querySelectorAll('.btn-delete-reminder').forEach(btn => {
       btn.onclick = () => {
+        syncStep3Data();
         const idx = Number(btn.dataset.index);
         formData.reminders.splice(idx, 1);
         formData.reminders.forEach((r, i) => { r.stage = i + 1; });
@@ -337,9 +372,11 @@ export async function renderWizard(container, { param: eventId }) {
       };
     });
 
+    // Custom Fields Handlers with Step 3 Sync
     const btnAddCf = document.getElementById('btn-add-cf');
     if (btnAddCf) {
       btnAddCf.onclick = () => {
+        syncStep3Data();
         formData.custom_fields.push({ label: '', required: false });
         render();
       };
@@ -347,6 +384,7 @@ export async function renderWizard(container, { param: eventId }) {
 
     document.querySelectorAll('.btn-remove-cf').forEach(btn => {
       btn.onclick = () => {
+        syncStep3Data();
         const idx = Number(btn.dataset.index);
         formData.custom_fields.splice(idx, 1);
         render();
@@ -359,22 +397,12 @@ export async function renderWizard(container, { param: eventId }) {
         btnSave.disabled = true;
         btnSave.innerText = 'Saving Event...';
 
-        const labels = document.querySelectorAll('.input-cf-label');
-        const reqs = document.querySelectorAll('.input-cf-req');
-        const collectedFields = [];
-        labels.forEach((lbl, i) => {
-          const val = lbl.value.trim();
-          if (val) collectedFields.push({ label: val, required: reqs[i]?.checked || false });
-        });
-        formData.custom_fields = collectedFields;
-
-        formData.passcode_plain = document.getElementById('w-passcode')?.value.trim() || null;
+        syncStep3Data();
 
         try {
           let savedEventId = eventId;
           let finalSlug = formData.slug;
 
-          // Check if slug exists to avoid 409 Conflict
           if (!isEdit) {
             const { data: existingSlug } = await supabase
               .from('events')
@@ -387,6 +415,8 @@ export async function renderWizard(container, { param: eventId }) {
             }
           }
 
+          const plainPasscode = formData.passcode_plain || null;
+
           const eventPayload = {
             organizer_id: user.id,
             name: formData.name,
@@ -396,8 +426,8 @@ export async function renderWizard(container, { param: eventId }) {
             slot_duration_minutes: formData.is_full_day ? 480 : formData.slot_duration_minutes,
             buffer_minutes: formData.is_full_day ? 0 : formData.buffer_minutes,
             parallel_tracks: formData.parallel_tracks,
-            passcode_plain: formData.passcode_plain,
-            passcode_hash: formData.passcode_plain || '',
+            passcode_plain: plainPasscode,
+            passcode_hash: plainPasscode || '',
             reminder_enabled: formData.reminders.length > 0,
             reminder_count: formData.reminders.length,
             reminder_frequency: formData.reminders[0]?.schedule || '24h',
@@ -490,7 +520,7 @@ export async function renderWizard(container, { param: eventId }) {
             await supabase.from('timeslots').insert(slotsToInsert);
           }
 
-          toast('Event saved successfully!', 'success');
+          toast('Event saved successfully with passcode protection!', 'success');
           window.location.hash = '#/publish/' + savedEventId;
 
         } catch (err) {
