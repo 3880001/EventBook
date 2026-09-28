@@ -1,6 +1,7 @@
 import { supabase } from '../supabaseClient.js';
 import { toast, generateQRCodeDataURI } from '../utils/ui.js';
 import { sendBookingConfirmationEmail } from '../utils/emailService.js';
+import { formatLocationHtml } from '../utils/location.js';
 
 export async function renderBookingPage(container, { param: slug }) {
   if (!slug) {
@@ -134,7 +135,7 @@ async function renderBookingWorkspace(container, event) {
       tracksTabsHtml = '<div style="margin-bottom:1.25rem;"><label class="form-label">Filter by Track / Room</label><div style="display:flex; gap:0.5rem; flex-wrap:wrap;">' + trackButtons + '</div></div>';
     }
 
-    // Slots Grid
+    // Slots Display
     let slotsDisplayHtml = '';
     if (isFullDayEvent) {
       const isBooked = currentSlots.length > 0 && currentSlots[0].status === 'booked';
@@ -178,7 +179,7 @@ async function renderBookingWorkspace(container, event) {
       slotsDisplayHtml = '<div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(145px, 1fr)); gap:0.65rem; margin-top:0.5rem;">' + slotButtons + '</div>';
     }
 
-    // Custom Questions
+    // Custom Fields
     let customFieldsHtml = '';
     for (let i = 0; i < customFields.length; i++) {
       const cf = customFields[i];
@@ -197,7 +198,7 @@ async function renderBookingWorkspace(container, event) {
       + '<h1 style="font-size:1.75rem; font-weight:700;">' + event.name + '</h1>'
       + '<p style="color:var(--text-muted); margin-top:0.35rem; line-height:1.5;">' + (event.description || 'Secure your reservation below.') + '</p>'
       + '<div style="display:flex; gap:1.25rem; margin-top:1rem; flex-wrap:wrap; font-size:0.875rem; color:var(--text-muted);">'
-      + '<div style="display:flex; align-items:center; gap:0.35rem;"><span>📍</span> ' + (event.location_details || 'Online') + '</div>'
+      + '<div style="display:flex; align-items:center; gap:0.35rem;">' + formatLocationHtml(event.location_details, 'Online') + '</div>'
       + '<div style="display:flex; align-items:center; gap:0.35rem;"><span>⏱️</span> ' + durationLabel + '</div>'
       + passcodeBadge
       + '</div>'
@@ -339,7 +340,6 @@ async function renderBookingWorkspace(container, event) {
             await supabase.from('timeslots').update({ status: 'booked' }).eq('id', targetSlotId);
           }
 
-          // Dispatch confirmation email to participant
           sendBookingConfirmationEmail(
             insertedBooking || bookingPayload,
             event,
@@ -394,9 +394,9 @@ function renderConfirmationScreen(container, event, slot, bookingRef, participan
     + '<span style="color:var(--text-muted); font-size:0.85rem;">Date & Time</span>'
     + '<span style="font-weight:600;">' + startStr + '</span>'
     + '</div>'
-    + '<div style="display:flex; justify-content:space-between;">'
+    + '<div style="display:flex; justify-content:space-between; align-items:center;">'
     + '<span style="color:var(--text-muted); font-size:0.85rem;">Location</span>'
-    + '<span style="font-weight:600;">' + (event.location_details || 'Online') + '</span>'
+    + '<span style="font-weight:600;">' + formatLocationHtml(event.location_details, 'Online') + '</span>'
     + '</div>'
     + '</div>'
     + '<div style="margin:1.5rem 0;">'
