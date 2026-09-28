@@ -28,13 +28,12 @@ export async function renderWizard(container, { param: eventId }) {
     buffer_minutes: 0,
     parallel_tracks: 1,
     passcode_plain: '',
-    reminder_enabled: true,
-    reminder_count: 1,
-    reminder_frequency: '24h',
+    reminders: [
+      { stage: 1, schedule: '24h' }
+    ],
     custom_fields: []
   };
 
-  // If in edit mode, fetch existing event data
   if (isEdit) {
     const { data: ev, error } = await supabase
       .from('events')
@@ -61,9 +60,9 @@ export async function renderWizard(container, { param: eventId }) {
       buffer_minutes: ev.buffer_minutes || 0,
       parallel_tracks: ev.parallel_tracks || 1,
       passcode_plain: ev.passcode_plain || '',
-      reminder_enabled: ev.reminder_enabled !== false,
-      reminder_count: ev.reminder_count || 1,
-      reminder_frequency: ev.reminder_frequency || '24h',
+      reminders: (ev.reminders_config && Array.isArray(ev.reminders_config) && ev.reminders_config.length > 0) 
+        ? ev.reminders_config 
+        : [{ stage: 1, schedule: '24h' }],
       custom_fields: ev.event_custom_fields ? ev.event_custom_fields.map(c => ({ label: c.label, required: c.required })) : []
     };
   }
@@ -72,7 +71,7 @@ export async function renderWizard(container, { param: eventId }) {
     let stepContent = '';
 
     if (currentStep === 1) {
-      // STEP 1: Basic Information
+      // Step 1: Basic Information
       stepContent = '<div class="card">'
         + '<h2 style="font-size:1.25rem; font-weight:700; margin-bottom:1.25rem;">Step 1: Event Details</h2>'
         + '<div class="form-group">'
@@ -82,7 +81,7 @@ export async function renderWizard(container, { param: eventId }) {
         + '<div class="form-group">'
         + '<label class="form-label">Custom URL Slug *</label>'
         + '<input type="text" id="w-slug" class="form-control" placeholder="parent-teacher-meeting" value="' + (formData.slug || '') + '" required />'
-        + '<small style="color:var(--text-muted);">Unique URL identifier for your public booking link</small>'
+        + '<small style="color:var(--text-muted);">Unique identifier for your public booking link</small>'
         + '</div>'
         + '<div class="form-group">'
         + '<label class="form-label">Description</label>'
@@ -98,7 +97,7 @@ export async function renderWizard(container, { param: eventId }) {
         + '</div>';
 
     } else if (currentStep === 2) {
-      // STEP 2: Date, Time & Tracks
+      // Step 2: Date, Time & Tracks
       stepContent = '<div class="card">'
         + '<h2 style="font-size:1.25rem; font-weight:700; margin-bottom:1.25rem;">Step 2: Timing & Capacity</h2>'
         + '<div class="form-group">'
@@ -145,7 +144,35 @@ export async function renderWizard(container, { param: eventId }) {
         + '</div>';
 
     } else if (currentStep === 3) {
-      // STEP 3: Passcode, Reminders & Custom Questions
+      // Step 3: Passcode, Reminders List & Custom Questions
+      let remindersListHtml = '';
+      const totalReminders = formData.reminders.length;
+
+      for (let i = 0; i < totalReminders; i++) {
+        const rem = formData.reminders[i];
+        const isLast = (i === totalReminders - 1);
+        const stageLabel = 'Reminder ' + (i + 1) + (isLast ? ' (Final with Quick RSVP)' : '');
+
+        remindersListHtml += '<div style="background:#ffffff; border:1px solid var(--border-color); border-radius:8px; padding:0.85rem 1rem; margin-bottom:0.75rem; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.75rem;">'
+          + '<div>'
+          + '<div style="font-weight:700; font-size:0.9rem; color:var(--text-primary);">' + stageLabel + '</div>'
+          + (isLast ? '<div style="font-size:0.75rem; color:#1e40af; margin-top:2px;">Includes one-click buttons: <em>"I\'m running late"</em>, <em>"I\'m here"</em>, <em>"Unable to make it"</em></div>' : '')
+          + '</div>'
+          + '<div style="display:flex; align-items:center; gap:0.5rem;">'
+          + '<select class="form-control form-control-sm select-reminder-sched" data-index="' + i + '" style="width:180px; font-weight:600;">'
+          + '<option value="24h"' + (rem.schedule === '24h' ? ' selected' : '') + '>24 Hours Before</option>'
+          + '<option value="12h"' + (rem.schedule === '12h' ? ' selected' : '') + '>12 Hours Before</option>'
+          + '<option value="2h"' + (rem.schedule === '2h' ? ' selected' : '') + '>2 Hours Before</option>'
+          + '<option value="1h"' + (rem.schedule === '1h' ? ' selected' : '') + '>1 Hour Before</option>'
+          + '<option value="30m"' + (rem.schedule === '30m' ? ' selected' : '') + '>30 Minutes Before</option>'
+          + '<option value="15m"' + (rem.schedule === '15m' ? ' selected' : '') + '>15 Minutes Before</option>'
+          + '</select>'
+          + (totalReminders > 1 ? '<button type="button" class="btn btn-secondary btn-sm btn-delete-reminder" data-index="' + i + '" style="color:var(--danger); border-color:#fca5a5;" title="Remove reminder">✕</button>' : '')
+          + '</div>'
+          + '</div>';
+      }
+
+      // Custom fields list
       let customFieldsHtml = '';
       for (let i = 0; i < formData.custom_fields.length; i++) {
         const cf = formData.custom_fields[i];
@@ -168,31 +195,16 @@ export async function renderWizard(container, { param: eventId }) {
         + '<small style="color:var(--text-muted);">Participants must enter this passcode before choosing a slot</small>'
         + '</div>'
 
-        // Reminder Management Card
+        // Multi-Reminder Management Card
         + '<div class="card" style="background:#f8fafc; border:1px solid var(--border-color); padding:1.25rem; margin:1.5rem 0; border-radius:10px;">'
-        + '<h3 style="font-size:1.05rem; font-weight:700; margin:0 0 0.5rem 0;">🔔 Email Reminder Management</h3>'
-        + '<p style="color:var(--text-muted); font-size:0.85rem; margin-bottom:1rem;">Automate attendee reminders and enable quick one-click RSVP options.</p>'
-        + '<div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">'
-        + '<div class="form-group" style="margin-bottom:0;">'
-        + '<label class="form-label">Reminder Count</label>'
-        + '<select id="w-reminder-count" class="form-control">'
-        + '<option value="1"' + (formData.reminder_count === 1 ? ' selected' : '') + '>1 Reminder (Final with Quick RSVP)</option>'
-        + '<option value="2"' + (formData.reminder_count === 2 ? ' selected' : '') + '>2 Reminders</option>'
-        + '<option value="3"' + (formData.reminder_count === 3 ? ' selected' : '') + '>3 Reminders</option>'
-        + '</select>'
+        + '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.75rem; flex-wrap:wrap; gap:0.5rem;">'
+        + '<div>'
+        + '<h3 style="font-size:1.05rem; font-weight:700; margin:0;">🔔 Email Reminder Management</h3>'
+        + '<p style="color:var(--text-muted); font-size:0.825rem; margin-top:2px;">Select and configure up to 3 individual scheduled reminders.</p>'
         + '</div>'
-        + '<div class="form-group" style="margin-bottom:0;">'
-        + '<label class="form-label">Frequency / Schedule</label>'
-        + '<select id="w-reminder-frequency" class="form-control">'
-        + '<option value="24h"' + (formData.reminder_frequency === '24h' ? ' selected' : '') + '>24 Hours Before Session</option>'
-        + '<option value="2h"' + (formData.reminder_frequency === '2h' ? ' selected' : '') + '>2 Hours Before Session</option>'
-        + '<option value="30m"' + (formData.reminder_frequency === '30m' ? ' selected' : '') + '>30 Minutes Before Session</option>'
-        + '</select>'
+        + (totalReminders < 3 ? '<button type="button" id="btn-add-reminder" class="btn btn-secondary btn-sm" style="font-weight:600;">+ Add Reminder</button>' : '<span style="font-size:0.75rem; color:var(--text-muted); font-weight:600;">Maximum 3 reminders</span>')
         + '</div>'
-        + '</div>'
-        + '<div style="background:#eff6ff; padding:10px 12px; border-radius:8px; font-size:0.8rem; color:#1e40af; margin-top:1rem;">'
-        + '💡 The final reminder automatically includes one-click action buttons: <strong>"I\'m running late"</strong>, <strong>"I\'m here"</strong>, and <strong>"Unable to make it today"</strong>.'
-        + '</div>'
+        + '<div id="reminders-list-box">' + remindersListHtml + '</div>'
         + '</div>'
 
         // Custom Questionnaire
@@ -223,7 +235,6 @@ export async function renderWizard(container, { param: eventId }) {
   }
 
   function bindStepEvents() {
-    // Slug auto-generation from title
     const nameInput = document.getElementById('w-name');
     if (nameInput) {
       nameInput.oninput = () => {
@@ -293,6 +304,37 @@ export async function renderWizard(container, { param: eventId }) {
       };
     }
 
+    // Reminders Management Handlers
+    const btnAddReminder = document.getElementById('btn-add-reminder');
+    if (btnAddReminder) {
+      btnAddReminder.onclick = () => {
+        if (formData.reminders.length >= 3) return;
+        const defaultSchedules = ['24h', '2h', '30m'];
+        const nextSchedule = defaultSchedules[formData.reminders.length] || '30m';
+        formData.reminders.push({ stage: formData.reminders.length + 1, schedule: nextSchedule });
+        render();
+      };
+    }
+
+    document.querySelectorAll('.btn-delete-reminder').forEach(btn => {
+      btn.onclick = () => {
+        const idx = Number(btn.dataset.index);
+        formData.reminders.splice(idx, 1);
+        formData.reminders.forEach((r, i) => { r.stage = i + 1; });
+        render();
+      };
+    });
+
+    document.querySelectorAll('.select-reminder-sched').forEach(sel => {
+      sel.onchange = () => {
+        const idx = Number(sel.dataset.index);
+        if (formData.reminders[idx]) {
+          formData.reminders[idx].schedule = sel.value;
+        }
+      };
+    });
+
+    // Custom Fields Handlers
     const btnAddCf = document.getElementById('btn-add-cf');
     if (btnAddCf) {
       btnAddCf.onclick = () => {
@@ -325,11 +367,7 @@ export async function renderWizard(container, { param: eventId }) {
         });
         formData.custom_fields = collectedFields;
 
-        // Read Passcode & Reminders
         formData.passcode_plain = document.getElementById('w-passcode')?.value.trim() || null;
-        formData.reminder_enabled = true;
-        formData.reminder_count = Number(document.getElementById('w-reminder-count')?.value || 1);
-        formData.reminder_frequency = document.getElementById('w-reminder-frequency')?.value || '24h';
 
         try {
           let savedEventId = eventId;
@@ -344,9 +382,10 @@ export async function renderWizard(container, { param: eventId }) {
             buffer_minutes: formData.is_full_day ? 0 : formData.buffer_minutes,
             parallel_tracks: formData.parallel_tracks,
             passcode_plain: formData.passcode_plain,
-            reminder_enabled: formData.reminder_enabled,
-            reminder_count: formData.reminder_count,
-            reminder_frequency: formData.reminder_frequency,
+            reminder_enabled: formData.reminders.length > 0,
+            reminder_count: formData.reminders.length,
+            reminder_frequency: formData.reminders[0]?.schedule || '24h',
+            reminders_config: formData.reminders,
             status: 'published'
           };
 
@@ -359,7 +398,7 @@ export async function renderWizard(container, { param: eventId }) {
             savedEventId = newEv.id;
           }
 
-          // Upsert event_dates
+          // Update event_dates
           await supabase.from('event_dates').delete().eq('event_id', savedEventId);
           const { error: dateErr } = await supabase.from('event_dates').insert({
             event_id: savedEventId,
@@ -370,7 +409,7 @@ export async function renderWizard(container, { param: eventId }) {
           });
           if (dateErr) throw dateErr;
 
-          // Upsert custom_fields
+          // Update custom_fields
           await supabase.from('event_custom_fields').delete().eq('event_id', savedEventId);
           if (formData.custom_fields.length > 0) {
             const cfInserts = formData.custom_fields.map((c, i) => ({
