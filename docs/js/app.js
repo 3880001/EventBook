@@ -1,14 +1,14 @@
-import { Router } from './router.js?v=4';
-import { renderDashboard } from './views/dashboard.js?v=4';
-import { renderWizard } from './views/wizard.js?v=4';
-import { renderPublishPage } from './views/publish.js?v=4';
-import { renderBookingPage } from './views/booking.js?v=4';
-import { renderTicketPage } from './views/ticket.js?v=4';
-import { renderAdminDashboard } from './views/admin.js?v=4';
-import { renderAnalyticsPage } from './views/analytics.js?v=4';
-import { renderFeedbackPage } from './views/feedback.js?v=4';
-import { renderAuthPage } from './views/auth.js?v=4';
-import { supabase } from './supabaseClient.js?v=4';
+import { Router } from './router.js?v=6';
+import { renderDashboard } from './views/dashboard.js?v=6';
+import { renderWizard } from './views/wizard.js?v=6';
+import { renderPublishPage } from './views/publish.js?v=6';
+import { renderBookingPage } from './views/booking.js?v=6';
+import { renderTicketPage } from './views/ticket.js?v=6';
+import { renderAdminDashboard } from './views/admin.js?v=6';
+import { renderAnalyticsPage } from './views/analytics.js?v=6';
+import { renderFeedbackPage } from './views/feedback.js?v=6';
+import { renderAuthPage } from './views/auth.js?v=6';
+import { supabase } from './supabaseClient.js?v=6';
 
 const appRoot = document.getElementById('app-root');
 
