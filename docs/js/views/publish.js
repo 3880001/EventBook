@@ -23,7 +23,6 @@ export async function renderPublishPage(container, { param: eventId }) {
   const cancelledBookings = event.bookings ? event.bookings.filter(b => b.status === 'cancelled').length : 0;
   const noShows = event.bookings ? event.bookings.filter(b => b.status === 'no_show').length : 0;
 
-  // Accurately compute base path to include repo name (/eventbook/) on GitHub Pages
   const basePath = window.location.pathname.endsWith('/') 
     ? window.location.pathname 
     : window.location.pathname + '/';
@@ -42,7 +41,6 @@ export async function renderPublishPage(container, { param: eventId }) {
           <p style="color:var(--text-muted); font-size:0.9rem;">${event.location_details || 'Online'} &bull; ${event.slot_duration_minutes}m slots</p>
         </div>
 
-        <!-- Top Action Buttons Bar -->
         <div style="display:flex; gap:0.5rem; flex-wrap:wrap; align-items:center;">
           <a href="#/edit/${event.id}" class="btn btn-secondary btn-sm" style="display:inline-flex; align-items:center; gap:0.35rem;">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
@@ -68,11 +66,11 @@ export async function renderPublishPage(container, { param: eventId }) {
               </button>
             </div>
             
-            <!-- Passcode Display with Dedicated Copy Button -->
-            <div style="margin-top:0.85rem; font-size:0.9rem; display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
-              <span style="color:var(--text-muted);">Passcode:</span>
-              <span id="text-passcode-val" style="font-family:monospace; font-weight:700; background:#e2e8f0; padding:3px 10px; border-radius:4px; letter-spacing:0.5px;">${event.passcode_plain || '******'}</span>
-              <button id="btn-copy-passcode" class="btn btn-secondary btn-sm" style="display:inline-flex; align-items:center; gap:0.3rem; padding:0.25rem 0.6rem; font-size:0.8rem;">
+            <!-- Passcode Display with Dedicated Copy Passcode Button -->
+            <div style="margin-top:0.85rem; font-size:0.9rem; display:flex; align-items:center; gap:0.6rem; flex-wrap:wrap;">
+              <span style="color:var(--text-muted); font-weight:500;">Passcode:</span>
+              <span id="text-passcode-val" style="font-family:monospace; font-weight:700; background:#e2e8f0; padding:4px 10px; border-radius:4px; letter-spacing:0.5px; font-size:0.95rem;">${event.passcode_plain || '******'}</span>
+              <button type="button" id="btn-copy-passcode" class="btn btn-secondary btn-sm" style="display:inline-flex; align-items:center; gap:0.35rem; padding:0.3rem 0.75rem; font-size:0.8rem; font-weight:600;">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
                 Copy Passcode
               </button>
