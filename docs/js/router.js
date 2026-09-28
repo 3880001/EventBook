@@ -4,8 +4,17 @@ export class Router {
   constructor(routes, rootElement) {
     this.routes = routes;
     this.root = rootElement;
+
+    // Listen for hash changes
     window.addEventListener('hashchange', () => this.handleRoute());
-    window.addEventListener('load', () => this.handleRoute());
+
+    // Trigger immediately if document is already loaded or interactive
+    if (document.readyState === 'complete' || document.readyState === 'interactive') {
+      setTimeout(() => this.handleRoute(), 0);
+    } else {
+      window.addEventListener('DOMContentLoaded', () => this.handleRoute());
+      window.addEventListener('load', () => this.handleRoute());
+    }
   }
 
   async handleRoute() {
