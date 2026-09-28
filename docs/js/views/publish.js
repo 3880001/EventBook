@@ -121,6 +121,9 @@ export async function renderPublishPage(container, { param: eventId }) {
       }
     }
 
+    // Read plain passcode accurately from event record
+    const realPasscode = (event.passcode_plain || event.passcode_hash || '').trim();
+
     container.innerHTML = '<div style="max-width:1100px; margin:0 auto; padding-bottom:3rem;">'
       + '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem; flex-wrap:wrap; gap:1rem;">'
       + '<div>'
@@ -144,7 +147,7 @@ export async function renderPublishPage(container, { param: eventId }) {
       + '</div>'
       + '</div>'
 
-      // Public Access Card
+      // Public Access Card with Plain-Text Passcode Display
       + '<div class="card" style="background:#f8fafc; border:1px solid var(--border-color); padding:1.5rem; margin-bottom:1.5rem;">'
       + '<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1.25rem;">'
       + '<div style="flex:1; min-width:280px;">'
@@ -157,12 +160,17 @@ export async function renderPublishPage(container, { param: eventId }) {
       + '</button>'
       + '</div>'
       + '<div style="margin-top:0.85rem; font-size:0.9rem; display:flex; align-items:center; gap:0.6rem; flex-wrap:wrap;">'
-      + '<span style="color:var(--text-muted); font-weight:500;">Passcode:</span>'
-      + '<span id="text-passcode-val" style="font-family:monospace; font-weight:700; background:#e2e8f0; padding:4px 10px; border-radius:4px; letter-spacing:0.5px; font-size:0.95rem;">' + (event.passcode_plain || '******') + '</span>'
-      + '<button type="button" id="btn-copy-passcode" class="btn btn-secondary btn-sm" style="display:inline-flex; align-items:center; gap:0.35rem; padding:0.3rem 0.75rem; font-size:0.8rem; font-weight:600;">'
-      + '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>'
-      + 'Copy Passcode'
-      + '</button>'
+      + '<span style="color:var(--text-muted); font-weight:600;">Passcode:</span>'
+      + (realPasscode 
+          ? '<span id="text-passcode-val" style="font-family:monospace; font-weight:700; background:#e2e8f0; color:#0f172a; padding:4px 10px; border-radius:6px; letter-spacing:1px; font-size:1rem;">' + realPasscode + '</span>'
+            + '<button type="button" id="btn-copy-passcode" class="btn btn-secondary btn-sm" style="display:inline-flex; align-items:center; gap:0.35rem; padding:0.3rem 0.75rem; font-size:0.8rem; font-weight:600;">'
+            + '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>'
+            + 'Copy Passcode'
+            + '</button>'
+            + '<button type="button" id="btn-edit-passcode" class="btn btn-secondary btn-sm" style="font-size:0.8rem; padding:0.3rem 0.75rem;">✏️ Edit</button>'
+          : '<span style="color:var(--text-muted); font-style:italic;">None (Public Access)</span>'
+            + '<button type="button" id="btn-edit-passcode" class="btn btn-primary btn-sm" style="font-size:0.8rem; padding:0.3rem 0.75rem;">+ Set Passcode</button>'
+        )
       + '</div>'
       + '</div>'
       + '<div style="text-align:center;">'
@@ -256,23 +264,95 @@ export async function renderPublishPage(container, { param: eventId }) {
 
       + '</div>';
 
-    bindInteractions();
+    bindInteractions(realPasscode);
   }
 
-  function bindInteractions() {
+  // Universal clipboard helper with fallback
+  async function copyText(text) {
+    if (!text) return false;
+    let success = false;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      try {
+        await navigator.clipboard.writeText(text);
+        success = true;
+      } catch (err) {
+        console.warn('Navigator clipboard failed, attempting fallback', err);
+      }
+    }
+    if (!success) {
+      try {
+        const area = document.createElement('textarea');
+        area.value = text;
+        area.style.position = 'fixed';
+        area.style.left = '-9999px';
+        area.style.top = '0';
+        document.body.appendChild(area);
+        area.focus();
+        area.select();
+        document.execCommand('copy');
+        document.body.removeChild(area);
+        success = true;
+      } catch (e) {
+        console.error('Fallback copy failed', e);
+      }
+    }
+    return success;
+  }
+
+  function bindInteractions(currentPasscode) {
+    // Copy Booking Link
     const copyLinkBtn = document.getElementById('btn-copy-inline');
     if (copyLinkBtn) {
-      copyLinkBtn.onclick = () => {
-        navigator.clipboard.writeText(publicBookingURL);
-        toast('Booking link copied to clipboard!', 'success');
+      copyLinkBtn.onclick = async () => {
+        const ok = await copyText(publicBookingURL);
+        if (ok) toast('Booking link copied to clipboard!', 'success');
       };
     }
 
+    // Copy Passcode
     const copyPassBtn = document.getElementById('btn-copy-passcode');
     if (copyPassBtn) {
-      copyPassBtn.onclick = () => {
-        navigator.clipboard.writeText(event.passcode_plain || '');
-        toast('Passcode copied to clipboard!', 'success');
+      copyPassBtn.onclick = async () => {
+        if (!currentPasscode) {
+          toast('No passcode to copy.', 'warning');
+          return;
+        }
+        const ok = await copyText(currentPasscode);
+        if (ok) {
+          toast('Passcode "' + currentPasscode + '" copied to clipboard!', 'success');
+        } else {
+          toast('Failed to copy passcode.', 'danger');
+        }
+      };
+    }
+
+    // Change or Set Passcode Button
+    const editPassBtn = document.getElementById('btn-edit-passcode');
+    if (editPassBtn) {
+      editPassBtn.onclick = async () => {
+        const promptMsg = currentPasscode 
+          ? 'Enter new passcode (or leave blank to remove passcode):' 
+          : 'Enter new passcode for this event:';
+        const entered = prompt(promptMsg, currentPasscode);
+        if (entered === null) return;
+
+        const cleanVal = entered.trim();
+        const nextPlain = cleanVal.length > 0 ? cleanVal : null;
+        const nextHash = cleanVal.length > 0 ? cleanVal : '';
+
+        const { error: passErr } = await supabase
+          .from('events')
+          .update({ passcode_plain: nextPlain, passcode_hash: nextHash })
+          .eq('id', event.id);
+
+        if (passErr) {
+          toast('Failed to update passcode: ' + passErr.message, 'danger');
+        } else {
+          event.passcode_plain = nextPlain;
+          event.passcode_hash = nextHash;
+          toast(nextPlain ? ('Passcode updated to "' + nextPlain + '"') : 'Passcode removed (Public access)', 'success');
+          renderView();
+        }
       };
     }
 
@@ -401,7 +481,6 @@ export async function renderPublishPage(container, { param: eventId }) {
       };
     }
 
-    // Status Selector Change Handler with Brevo Notifications
     document.querySelectorAll('.select-booking-status').forEach(sel => {
       sel.onchange = async () => {
         const bookingId = sel.dataset.id;
@@ -451,7 +530,6 @@ export async function renderPublishPage(container, { param: eventId }) {
       };
     });
 
-    // Delete Booking Handler with Cancellation Notice
     document.querySelectorAll('.btn-delete-booking').forEach(btn => {
       btn.onclick = async () => {
         const bookingId = btn.dataset.id;
