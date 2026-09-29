@@ -1,6 +1,43 @@
-// Universal Event Engine - Single Source of Truth for all event states
+// Universal Event Engine - Single Source of Truth for all event states & timezones
 
-// 1. Calculate start and end Date objects for any event/slot
+// 1. Convert local date & time strings into exact UTC ISO timestamp for any timezone
+export function createZonedISO(dateStr, timeStr, timeZone) {
+  const tz = timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+  // Parse as UTC first
+  const tempDate = new Date(`${dateStr}T${timeStr}:00Z`);
+  // Format tempDate inside target timezone to calculate exact hour difference
+  const invDate = new Date(tempDate.toLocaleString('en-US', { timeZone: tz }));
+  const diff = tempDate.getTime() - invDate.getTime();
+  // Adjust timestamp so that inside the target timezone, it matches dateStr + timeStr
+  return new Date(tempDate.getTime() + diff).toISOString();
+}
+
+// 2. Format ISO timestamp using event's locked timezone
+export function formatEventTime(isoString, timeZone, options = {}) {
+  if (!isoString) return '';
+  const tz = timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+  const defaultOpts = {
+    hour: 'numeric',
+    minute: '2-digit',
+    timeZone: tz
+  };
+  return new Date(isoString).toLocaleTimeString([], { ...defaultOpts, ...options });
+}
+
+export function formatEventDate(isoString, timeZone, options = {}) {
+  if (!isoString) return '';
+  const tz = timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+  const defaultOpts = {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    timeZone: tz
+  };
+  return new Date(isoString).toLocaleDateString(undefined, { ...defaultOpts, ...options });
+}
+
+// 3. Calculate start and end Date objects for any event/slot
 export function getSessionTimes(event, slot) {
   let startTime = null;
   let endTime = null;
@@ -24,7 +61,7 @@ export function getSessionTimes(event, slot) {
   return { startTime, endTime };
 }
 
-// 2. Determine if an event or session has concluded (past)
+// 4. Determine if an event or session has concluded (strictly past)
 export function isEventPast(event, slot = null) {
   const now = new Date();
 
@@ -44,7 +81,7 @@ export function isEventPast(event, slot = null) {
   return false;
 }
 
-// 3. Determine if attendee self check-in is allowed (1 hour before session until end)
+// 5. Determine if attendee self check-in is allowed (1 hour before session until end)
 export function isCheckinAllowed(event, slot) {
   const now = new Date();
   const { startTime, endTime } = getSessionTimes(event, slot);
@@ -63,7 +100,7 @@ export function isCheckinAllowed(event, slot) {
   return { allowed: true, reason: 'open' };
 }
 
-// 4. Resolve custom fields list resiliently across all storage variations
+// 6. Resolve custom fields list resiliently across all storage variations
 export function getCustomFields(event) {
   if (!event) return [];
   
@@ -102,7 +139,7 @@ export function getCustomFields(event) {
   return [];
 }
 
-// 5. Passcode resolution
+// 7. Passcode resolution
 export function getEventPasscode(event) {
   if (!event) return '';
   return (event.passcode_plain || event.passcode_hash || '').trim();
