@@ -34,7 +34,7 @@ export async function renderBookingPage(container, { param: slug, query }) {
     return;
   }
 
-  // 1. Universal Past Event Check
+  // Universal Past Check
   if (isEventPast(event)) {
     container.innerHTML = '<div style="max-width:550px; margin:4rem auto; padding:0 1rem;">'
       + '<div class="card" style="text-align:center; padding:3rem 1.5rem; border-radius:16px;">'
@@ -54,7 +54,7 @@ export async function renderBookingPage(container, { param: slug, query }) {
     return;
   }
 
-  // 2. Universal Passcode Gate
+  // Universal Passcode Gate
   const passcode = getEventPasscode(event);
   const requiresPasscode = hasEventPasscode(event);
   const passcodeStorageKey = 'passcode_unlocked_' + event.id;
@@ -219,25 +219,25 @@ async function renderBookingWorkspace(container, event, hasPasscode) {
           + '<span style="font-size:0.75rem; opacity:0.85; font-weight:normal;">' + subText + '</span>'
           + '</button>';
       }
-      slotsDisplayHtml = '<div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap:0.65rem; margin-top:0.5rem;">' + slotButtons + '</div>';
+      slotsDisplayHtml = '<div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap:0.65rem; margin-top:0.5rem;">' + slotButtons + '</div>';
     }
 
-    // Dynamic Custom Questions HTML (Universal)
+    // Dynamic Custom Questions HTML (Prominently rendered)
     let customFieldsHtml = '';
     if (customFields.length > 0) {
-      customFieldsHtml = '<div style="margin-top:1rem; padding-top:1rem; border-top:1px dashed var(--border-color);">'
-        + '<h3 style="font-size:0.95rem; font-weight:700; color:var(--text-primary); margin-bottom:0.75rem;">Additional Information</h3>';
+      customFieldsHtml = '<div style="margin-top:1.25rem; padding-top:1.25rem; border-top:1px dashed var(--border-color);">'
+        + '<h3 style="font-size:1rem; font-weight:700; color:var(--text-primary); margin-bottom:0.85rem;">📋 Required Registration Questions</h3>';
 
       for (let i = 0; i < customFields.length; i++) {
         const cf = customFields[i];
-        const isReq = (cf.required === true || cf.required === 'true' || cf.required === 1);
+        const isReq = cf.required;
         const reqBadge = isReq 
-          ? ' <span style="color:#ef4444; font-weight:700;">* (Required)</span>' 
+          ? ' <span style="color:#ef4444; font-weight:700; font-size:0.85rem;">* (Required)</span>' 
           : ' <span style="color:var(--text-muted); font-size:0.8rem;">(Optional)</span>';
 
-        customFieldsHtml += '<div class="form-group">'
-          + '<label class="form-label" style="font-weight:600;">' + cf.label + reqBadge + '</label>'
-          + '<input type="' + (cf.field_type || 'text') + '" class="form-control custom-field-input" data-label="' + cf.label.replace(/"/g, '&quot;') + '" data-required="' + (isReq ? 'true' : 'false') + '" placeholder="Enter ' + cf.label.replace(/"/g, '&quot;') + '" style="background:#fff;" />'
+        customFieldsHtml += '<div class="form-group" style="margin-bottom:1rem;">'
+          + '<label class="form-label" style="font-weight:700; font-size:0.95rem;">' + cf.label + reqBadge + '</label>'
+          + '<input type="' + (cf.field_type || 'text') + '" class="form-control custom-field-input" data-label="' + cf.label.replace(/"/g, '&quot;') + '" data-required="' + (isReq ? 'true' : 'false') + '" placeholder="Please provide your ' + cf.label.replace(/"/g, '&quot;') + '" style="background:#fff; border:1px solid #cbd5e1; padding:0.65rem; font-size:0.95rem;" />'
           + '</div>';
       }
       customFieldsHtml += '</div>';
@@ -259,38 +259,29 @@ async function renderBookingWorkspace(container, event, hasPasscode) {
         selectedTimeLabel = new Date(selectedSlot.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
           + ' - ' + new Date(selectedSlot.end_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       }
-      slotNoticeHtml = '<div style="background:#eff6ff; border:1px solid #bfdbfe; color:#1e40af; padding:8px 12px; border-radius:8px; font-size:0.875rem; font-weight:600; margin-bottom:1rem;">'
-        + '✓ Selected Slot: <strong>' + selectedTimeLabel + '</strong>'
+      slotNoticeHtml = '<div style="background:#eff6ff; border:1px solid #bfdbfe; color:#1e40af; padding:10px 14px; border-radius:8px; font-size:0.9rem; font-weight:600; margin-bottom:1.25rem;">'
+        + '✓ Selected Appointment: <strong>' + selectedTimeLabel + '</strong>'
         + '</div>';
     }
 
     container.innerHTML = '<div style="max-width:850px; margin:0 auto; padding:1rem 0;">'
-      // Card 1: Event Details
+      // Card 1: Event Summary
       + '<div class="card" style="margin-bottom:1.5rem;">'
       + '<div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:0.75rem;">'
       + '<h1 style="font-size:1.75rem; font-weight:700; margin:0;">' + event.name + '</h1>'
       + passcodeStatusBadge
       + '</div>'
-      + '<p style="color:var(--text-muted); margin-top:0.5rem; line-height:1.5;">' + (event.description || 'Secure your reservation below.') + '</p>'
+      + '<p style="color:var(--text-muted); margin-top:0.5rem; line-height:1.5;">' + (event.description || 'Complete the registration form and choose your timeslot below.') + '</p>'
       + '<div style="display:flex; gap:1.25rem; margin-top:1rem; flex-wrap:wrap; font-size:0.875rem; color:var(--text-muted);">'
       + '<div style="display:flex; align-items:center; gap:0.35rem;">' + formatLocationHtml(event.location_details, 'Online') + '</div>'
       + '<div style="display:flex; align-items:center; gap:0.35rem;"><span>⏱️</span> ' + durationLabel + '</div>'
       + '</div>'
       + '</div>'
 
-      // Card 2: Select Appointment Slot
-      + '<div class="card" id="slots-card" style="margin-bottom:1.5rem;">'
-      + '<h2 style="font-size:1.25rem; font-weight:700; margin-bottom:1rem;">1. Select Appointment Slot</h2>'
-      + datesTabsHtml
-      + tracksTabsHtml
-      + slotsDisplayHtml
-      + '</div>'
-
-      // Card 3: Participant Information & Required Custom Questions (Always Visible)
-      + '<div class="card" id="booking-form-card" style="margin-bottom:2rem;">'
-      + '<h2 style="font-size:1.25rem; font-weight:700; margin-bottom:0.5rem;">2. Your Information</h2>'
-      + '<p style="color:var(--text-muted); font-size:0.85rem; margin-bottom:1.25rem;">Please provide your attendee details and any required event questions below.</p>'
-      + slotNoticeHtml
+      // Card 2: Step 1 - Participant Details & Questions (Prominently First)
+      + '<div class="card" id="booking-form-card" style="margin-bottom:1.5rem;">'
+      + '<h2 style="font-size:1.25rem; font-weight:700; margin-bottom:0.5rem;">1. Participant Information</h2>'
+      + '<p style="color:var(--text-muted); font-size:0.85rem; margin-bottom:1.25rem;">Please provide your attendee contact details and answer any required questions.</p>'
       + '<form id="booking-submit-form" novalidate>'
       + '<div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">'
       + '<div class="form-group">'
@@ -307,9 +298,21 @@ async function renderBookingWorkspace(container, event, hasPasscode) {
       + '<input type="tel" id="p-phone" class="form-control" placeholder="+1 555-0199" style="background:#fff;" />'
       + '</div>'
       + customFieldsHtml
-      + '<div style="margin-top:1.5rem; display:flex; justify-content:flex-end;">'
-      + '<button type="submit" id="btn-submit-booking" class="btn btn-primary" style="padding:0.85rem 2rem; font-size:1rem; font-weight:700;">'
-      + (selectedSlot ? 'Confirm Booking &rarr;' : 'Select Slot & Confirm')
+      + '</div>'
+
+      // Card 3: Step 2 - Choose Appointment Slot
+      + '<div class="card" id="slots-card" style="margin-bottom:2rem;">'
+      + '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem; flex-wrap:wrap; gap:0.5rem;">'
+      + '<h2 style="font-size:1.25rem; font-weight:700; margin:0;">2. Select Appointment Timeslot</h2>'
+      + '<span style="font-size:0.85rem; color:var(--text-muted); font-weight:600;">' + currentSlots.length + ' Slots Available</span>'
+      + '</div>'
+      + slotNoticeHtml
+      + datesTabsHtml
+      + tracksTabsHtml
+      + slotsDisplayHtml
+      + '<div style="margin-top:2rem; padding-top:1.25rem; border-top:1px solid var(--border-color); display:flex; justify-content:flex-end;">'
+      + '<button type="submit" id="btn-submit-booking" class="btn btn-primary" style="padding:0.85rem 2.25rem; font-size:1rem; font-weight:700;">'
+      + (selectedSlot ? 'Confirm Booking &rarr;' : 'Select a Slot & Confirm')
       + '</button>'
       + '</div>'
       + '</form>'
@@ -355,8 +358,6 @@ async function renderBookingWorkspace(container, event, hasPasscode) {
           start_time: (activeDateObj && activeDateObj.event_date ? activeDateObj.event_date : new Date().toISOString().split('T')[0]) + 'T09:00:00'
         };
         render();
-        const formCard = document.getElementById('booking-form-card');
-        if (formCard) formCard.scrollIntoView({ behavior: 'smooth' });
       };
     }
 
@@ -365,8 +366,6 @@ async function renderBookingWorkspace(container, event, hasPasscode) {
         const slotId = btn.dataset.slotId;
         selectedSlot = timeslots.find(s => s.id === slotId);
         render();
-        const formCard = document.getElementById('booking-form-card');
-        if (formCard) formCard.scrollIntoView({ behavior: 'smooth' });
       };
     });
 
@@ -376,14 +375,6 @@ async function renderBookingWorkspace(container, event, hasPasscode) {
         e.preventDefault();
         const submitBtn = document.getElementById('btn-submit-booking');
 
-        // 1. Ensure a slot is selected
-        if (!selectedSlot && !isFullDayEvent) {
-          toast('Please choose an appointment timeslot above.', 'warning');
-          const slotsBox = document.getElementById('slots-card');
-          if (slotsBox) slotsBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          return;
-        }
-
         const nameEl = document.getElementById('p-fullname');
         const emailEl = document.getElementById('p-email');
         const phoneEl = document.getElementById('p-phone');
@@ -392,12 +383,13 @@ async function renderBookingWorkspace(container, event, hasPasscode) {
         const email = emailEl?.value.trim() || '';
         const phone = phoneEl?.value.trim() || '';
 
-        // 2. Validate Standard Contact Fields
+        // 1. Validate Base Fields
         if (!fullName) {
           toast('Please enter your full name.', 'danger');
           if (nameEl) {
             nameEl.style.border = '2px solid #ef4444';
             nameEl.focus();
+            nameEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
           }
           return;
         }
@@ -408,12 +400,13 @@ async function renderBookingWorkspace(container, event, hasPasscode) {
           if (emailEl) {
             emailEl.style.border = '2px solid #ef4444';
             emailEl.focus();
+            emailEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
           }
           return;
         }
         if (emailEl) emailEl.style.border = '';
 
-        // 3. Strict Validation for Any Required Custom Questions
+        // 2. Strict Custom Questions Validation (e.g. "ID")
         const customInputs = document.querySelectorAll('.custom-field-input');
         const customResponses = {};
 
@@ -437,7 +430,15 @@ async function renderBookingWorkspace(container, event, hasPasscode) {
           }
         }
 
-        // 4. All Validations Passed - Proceed with Booking
+        // 3. Ensure a Slot Is Picked
+        if (!selectedSlot && !isFullDayEvent) {
+          toast('Please select an appointment timeslot.', 'warning');
+          const slotsBox = document.getElementById('slots-card');
+          if (slotsBox) slotsBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          return;
+        }
+
+        // 4. Save Booking
         submitBtn.disabled = true;
         submitBtn.innerText = 'Securing Booking...';
 
