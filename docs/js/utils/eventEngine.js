@@ -1,6 +1,6 @@
 // Universal Event Engine - Single Source of Truth for all event states
 
-// 1. Calculate the definitive start and end Date objects for any event/slot
+// 1. Calculate start and end Date objects for any event/slot
 export function getSessionTimes(event, slot) {
   let startTime = null;
   let endTime = null;
@@ -24,17 +24,15 @@ export function getSessionTimes(event, slot) {
   return { startTime, endTime };
 }
 
-// 2. Determine if an event or session has concluded (strictly past)
+// 2. Determine if an event or session has concluded (past)
 export function isEventPast(event, slot = null) {
   const now = new Date();
 
-  // If a specific slot is passed in
   if (slot) {
     const { endTime } = getSessionTimes(event, slot);
     if (endTime) return now > endTime;
   }
 
-  // If checking the entire event as a whole (all dates)
   if (event?.event_dates && event.event_dates.length > 0) {
     const hasAnyUpcoming = event.event_dates.some(ed => {
       const eStr = ed.end_time || '23:59:59';
@@ -46,7 +44,7 @@ export function isEventPast(event, slot = null) {
   return false;
 }
 
-// 3. Determine if attendee self check-in is currently open (window: 1 hour before start until end)
+// 3. Determine if attendee self check-in is allowed (1 hour before session until end)
 export function isCheckinAllowed(event, slot) {
   const now = new Date();
   const { startTime, endTime } = getSessionTimes(event, slot);
@@ -54,31 +52,49 @@ export function isCheckinAllowed(event, slot) {
   if (!startTime || !endTime) return { allowed: false, reason: 'unknown' };
 
   if (now > endTime) {
-    return { allowed: false, reason: 'past' }; // Event concluded
+    return { allowed: false, reason: 'past' };
   }
 
-  const checkinOpensAt = new Date(startTime.getTime() - 60 * 60 * 1000); // 1 hour prior
+  const checkinOpensAt = new Date(startTime.getTime() - 60 * 60 * 1000);
   if (now < checkinOpensAt) {
-    return { allowed: false, reason: 'early', opensAt: checkinOpensAt }; // Too early
+    return { allowed: false, reason: 'early', opensAt: checkinOpensAt };
   }
 
   return { allowed: true, reason: 'open' };
 }
 
-// 4. Resolve custom fields list reliably from any event record
+// 4. Resolve custom fields list resiliently across all storage variations
 export function getCustomFields(event) {
   if (!event) return [];
   
-  if (Array.isArray(event.custom_fields) && event.custom_fields.length > 0) {
-    return event.custom_fields;
+  let fields = event.custom_fields;
+  if (typeof fields === 'string') {
+    try { fields = JSON.parse(fields); } catch(e) { fields = []; }
   }
-  if (Array.isArray(event.custom_fields_config) && event.custom_fields_config.length > 0) {
-    return event.custom_fields_config;
+  if (Array.isArray(fields) && fields.length > 0) {
+    return fields.map(c => ({
+      label: c.label,
+      required: (c.required === true || c.required === 'true' || c.required === 1),
+      field_type: c.field_type || 'text'
+    }));
   }
+
+  let config = event.custom_fields_config;
+  if (typeof config === 'string') {
+    try { config = JSON.parse(config); } catch(e) { config = []; }
+  }
+  if (Array.isArray(config) && config.length > 0) {
+    return config.map(c => ({
+      label: c.label,
+      required: (c.required === true || c.required === 'true' || c.required === 1),
+      field_type: c.field_type || 'text'
+    }));
+  }
+
   if (Array.isArray(event.event_custom_fields) && event.event_custom_fields.length > 0) {
     return event.event_custom_fields.map(c => ({
       label: c.label,
-      required: !!c.required,
+      required: (c.required === true || c.required === 'true' || c.required === 1),
       field_type: c.field_type || 'text'
     }));
   }
