@@ -1,7 +1,7 @@
 import { supabase } from '../supabaseClient.js';
 import { toast } from '../utils/ui.js';
 import { attachLocationAutocomplete } from '../utils/location.js';
-import { getCustomFields, getEventPasscode, createZonedISO } from '../utils/eventEngine.js';
+import { getCustomFields, getEventPasscode, getUtcIsoFromLocal } from '../utils/eventEngine.js';
 
 export async function renderWizard(container, { param: eventId }) {
   container.innerHTML = '<div class="loader-center"><div class="spinner"></div></div>';
@@ -16,21 +16,23 @@ export async function renderWizard(container, { param: eventId }) {
 
   let isEdit = !!eventId;
   let currentStep = 1;
-  const detectedTz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/Toronto';
+
+  // Auto-detect creator's local device timezone
+  const creatorTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
 
   let formData = {
     name: '',
     slug: '',
     description: '',
     location_details: '',
-    timezone: detectedTz,
+    timezone: creatorTimezone,
     event_date: new Date().toISOString().split('T')[0],
-    start_time: '12:00',
+    start_time: '09:00',
     end_time: '17:00',
     is_full_day: false,
-    slot_duration_minutes: 10,
-    buffer_minutes: 5,
-    parallel_tracks: 2,
+    slot_duration_minutes: 15,
+    buffer_minutes: 0,
+    parallel_tracks: 1,
     passcode_plain: '',
     reminders: [{ stage: 1, schedule: '24h' }],
     custom_fields: []
@@ -54,14 +56,14 @@ export async function renderWizard(container, { param: eventId }) {
       slug: ev.slug || '',
       description: ev.description || '',
       location_details: ev.location_details || '',
-      timezone: ev.timezone || detectedTz,
+      timezone: ev.timezone || creatorTimezone,
       event_date: ed.event_date || new Date().toISOString().split('T')[0],
-      start_time: (ed.start_time || '12:00:00').slice(0, 5),
+      start_time: (ed.start_time || '09:00:00').slice(0, 5),
       end_time: (ed.end_time || '17:00:00').slice(0, 5),
-      is_full_day: !!ed.is_full_day || ev.slot_duration_minutes >= 480,
-      slot_duration_minutes: ev.slot_duration_minutes || 10,
-      buffer_minutes: ev.buffer_minutes || 5,
-      parallel_tracks: ev.parallel_tracks || 2,
+      is_full_day: !!ed.is_full_day,
+      slot_duration_minutes: (ev.slot_duration_minutes && ev.slot_duration_minutes < 480) ? ev.slot_duration_minutes : 15,
+      buffer_minutes: ev.buffer_minutes !== undefined ? ev.buffer_minutes : 0,
+      parallel_tracks: ev.parallel_tracks || 1,
       passcode_plain: getEventPasscode(ev),
       reminders: (ev.reminders_config && Array.isArray(ev.reminders_config) && ev.reminders_config.length > 0) 
         ? ev.reminders_config 
@@ -108,11 +110,11 @@ export async function renderWizard(container, { param: eventId }) {
         + '<h2 style="font-size:1.25rem; font-weight:700; margin-bottom:1.25rem;">Step 1: Event Details</h2>'
         + '<div class="form-group">'
         + '<label class="form-label">Event Name *</label>'
-        + '<input type="text" id="w-name" class="form-control" placeholder="e.g. Parent Teacher Meeting" value="' + (formData.name || '') + '" required />'
+        + '<input type="text" id="w-name" class="form-control" placeholder="Event Name" value="' + (formData.name || '') + '" required />'
         + '</div>'
         + '<div class="form-group">'
         + '<label class="form-label">Custom URL Slug *</label>'
-        + '<input type="text" id="w-slug" class="form-control" placeholder="parent-teacher-meeting" value="' + (formData.slug || '') + '" required />'
+        + '<input type="text" id="w-slug" class="form-control" placeholder="event-url-slug" value="' + (formData.slug || '') + '" required />'
         + '<small style="color:var(--text-muted);">Unique identifier for your public booking link</small>'
         + '</div>'
         + '<div class="form-group">'
@@ -134,7 +136,7 @@ export async function renderWizard(container, { param: eventId }) {
       stepContent = '<div class="card">'
         + '<h2 style="font-size:1.25rem; font-weight:700; margin-bottom:1.25rem;">Step 2: Timing & Capacity</h2>'
         
-        // Timezone Selector Locked to Creator's Region
+        // Timezone Auto-Detected from Device
         + '<div class="form-group" style="background:#f1f5f9; padding:0.85rem 1rem; border-radius:10px; border:1px solid #cbd5e1; margin-bottom:1.25rem;">'
         + '<label class="form-label" style="font-weight:700; margin-bottom:4px; display:flex; justify-content:space-between;">'
         + '<span>🌐 Event Timezone (Creator\'s Local Time)</span>'
@@ -218,7 +220,7 @@ export async function renderWizard(container, { param: eventId }) {
       for (let i = 0; i < formData.custom_fields.length; i++) {
         const cf = formData.custom_fields[i];
         customFieldsHtml += '<div style="display:flex; gap:0.5rem; align-items:center; margin-bottom:0.6rem;">'
-          + '<input type="text" class="form-control input-cf-label" value="' + (cf.label || '') + '" placeholder="e.g. ID or Member Number" style="background:#fff;" />'
+          + '<input type="text" class="form-control input-cf-label" value="' + (cf.label || '') + '" placeholder="e.g. ID, Member Number, Dietary" style="background:#fff;" />'
           + '<label style="display:flex; align-items:center; gap:0.35rem; font-size:0.85rem; white-space:nowrap; font-weight:600;">'
           + '<input type="checkbox" class="input-cf-req" ' + (cf.required ? 'checked' : '') + ' /> Required'
           + '</label>'
@@ -418,11 +420,19 @@ export async function renderWizard(container, { param: eventId }) {
             savedEventId = newEv.id;
           }
 
-          // 2. Child tables deletion order
-          await supabase.from('timeslots').delete().eq('event_id', savedEventId);
-          await supabase.from('event_custom_fields').delete().eq('event_id', savedEventId);
-          await supabase.from('event_dates').delete().eq('event_id', savedEventId);
+          // 2. Unlink bookings so foreign keys don't block deletion
+          await supabase.from('bookings').update({ timeslot_id: null }).eq('event_id', savedEventId);
 
+          // 3. Child tables deletion with error checking
+          const { error: delTsErr } = await supabase.from('timeslots').delete().eq('event_id', savedEventId);
+          if (delTsErr) throw delTsErr;
+
+          await supabase.from('event_custom_fields').delete().eq('event_id', savedEventId);
+
+          const { error: delEdErr } = await supabase.from('event_dates').delete().eq('event_id', savedEventId);
+          if (delEdErr) throw delEdErr;
+
+          // 4. Insert clean event_date row
           const { data: insertedDate, error: dateErr } = await supabase.from('event_dates').insert({
             event_id: savedEventId,
             event_date: formData.event_date,
@@ -444,14 +454,14 @@ export async function renderWizard(container, { param: eventId }) {
             await supabase.from('event_custom_fields').insert(cfInserts);
           }
 
-          // 3. Generate slots using timezone-aware ISO converter
+          // 5. Generate slots using timezone-aware converter
           const slotsToInsert = [];
           const tracks = Math.max(1, formData.parallel_tracks || 1);
           const tz = formData.timezone;
 
           if (formData.is_full_day) {
-            const slotStartISO = createZonedISO(formData.event_date, '09:00', tz);
-            const slotEndISO = createZonedISO(formData.event_date, '17:00', tz);
+            const slotStartISO = getUtcIsoFromLocal(formData.event_date, '09:00', tz);
+            const slotEndISO = getUtcIsoFromLocal(formData.event_date, '17:00', tz);
             for (let tr = 1; tr <= tracks; tr++) {
               slotsToInsert.push({
                 event_id: savedEventId,
@@ -478,8 +488,8 @@ export async function renderWizard(container, { param: eventId }) {
               const endH = String(Math.floor(endMinCalc / 60)).padStart(2, '0');
               const endM = String(endMinCalc % 60).padStart(2, '0');
 
-              const slotStartISO = createZonedISO(formData.event_date, `${startH}:${startM}`, tz);
-              const slotEndISO = createZonedISO(formData.event_date, `${endH}:${endM}`, tz);
+              const slotStartISO = getUtcIsoFromLocal(formData.event_date, `${startH}:${startM}`, tz);
+              const slotEndISO = getUtcIsoFromLocal(formData.event_date, `${endH}:${endM}`, tz);
 
               for (let tr = 1; tr <= tracks; tr++) {
                 slotsToInsert.push({
@@ -501,7 +511,7 @@ export async function renderWizard(container, { param: eventId }) {
             if (slotErr) throw slotErr;
           }
 
-          toast('Event saved with locked timezone!', 'success');
+          toast('Event saved successfully!', 'success');
           window.location.hash = '#/publish/' + savedEventId;
 
         } catch (err) {
