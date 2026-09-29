@@ -25,7 +25,7 @@ export async function renderPublishPage(container, { param: eventId }) {
 
   let bookingsList = bookingsData || [];
   const timeslotsList = event.timeslots || [];
-  const eventTimezone = event.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/Toronto';
+  const eventTimezone = event.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
   const isFullDay = (event.event_dates && event.event_dates.some(d => d.is_full_day)) || (event.slot_duration_minutes >= 480);
 
   const basePath = window.location.pathname.endsWith('/') 
@@ -68,15 +68,18 @@ export async function renderPublishPage(container, { param: eventId }) {
         const b = filteredBookings[i];
         const participant = b.participant_profiles || {};
 
-        let slotTimeStr = isFullDay ? 'Whole Day Session' : 'Scheduled Appointment';
+        let slotTimeStr = 'Scheduled Appointment';
         let slotObj = timeslotsList.find(s => s.id === b.timeslot_id);
+
         if (slotObj && slotObj.start_time) {
           const startStr = formatEventTime(slotObj.start_time, eventTimezone);
           const dateStr = formatEventDate(slotObj.start_time, eventTimezone, { month: 'short', day: 'numeric' });
           const trackTag = slotObj.track_number ? (' • Track ' + slotObj.track_number) : '';
           slotTimeStr = dateStr + ' at ' + startStr + trackTag;
+        } else if (isFullDay && event.event_dates && event.event_dates[0]) {
+          slotTimeStr = formatEventDate(event.event_dates[0].event_date + 'T12:00:00Z', eventTimezone) + ' (All-Day Pass)';
         } else if (event.event_dates && event.event_dates[0]) {
-          slotTimeStr = formatEventDate(event.event_dates[0].event_date + 'T12:00:00Z', eventTimezone) + ' (Whole Day)';
+          slotTimeStr = formatEventDate(event.event_dates[0].event_date + 'T12:00:00Z', eventTimezone) + ' • Slot Unassigned';
         }
 
         let customInfoHtml = '<span style="color:var(--text-muted);">-</span>';
@@ -143,7 +146,7 @@ export async function renderPublishPage(container, { param: eventId }) {
       + '<div style="display:flex; gap:0.5rem; flex-wrap:wrap; align-items:center;">'
       + '<button id="btn-email-setup" class="btn btn-secondary btn-sm" style="display:inline-flex; align-items:center; gap:0.35rem;">⚙️ Email Setup</button>'
       + '<a href="#/edit/' + event.id + '" class="btn btn-secondary btn-sm" style="display:inline-flex; align-items:center; gap:0.35rem;">'
-      + '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>'
+      + '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 1-2-2v-14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>'
       + 'Edit Event'
       + '</a>'
       + '<button id="btn-export-csv" class="btn btn-secondary btn-sm">Export CSV</button>'
