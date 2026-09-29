@@ -104,11 +104,11 @@ export async function renderWizard(container, { param: eventId }) {
         + '<h2 style="font-size:1.25rem; font-weight:700; margin-bottom:1.25rem;">Step 1: Event Details</h2>'
         + '<div class="form-group">'
         + '<label class="form-label">Event Name *</label>'
-        + '<input type="text" id="w-name" class="form-control" placeholder="e.g. Science Fair or Annual Meeting" value="' + (formData.name || '') + '" required />'
+        + '<input type="text" id="w-name" class="form-control" placeholder="e.g. Parent Teacher Meeting" value="' + (formData.name || '') + '" required />'
         + '</div>'
         + '<div class="form-group">'
         + '<label class="form-label">Custom URL Slug *</label>'
-        + '<input type="text" id="w-slug" class="form-control" placeholder="annual-meeting" value="' + (formData.slug || '') + '" required />'
+        + '<input type="text" id="w-slug" class="form-control" placeholder="parent-teacher-meeting" value="' + (formData.slug || '') + '" required />'
         + '<small style="color:var(--text-muted);">Unique URL identifier for participant bookings</small>'
         + '</div>'
         + '<div class="form-group">'
@@ -117,7 +117,7 @@ export async function renderWizard(container, { param: eventId }) {
         + '</div>'
         + '<div class="form-group" style="position:relative;">'
         + '<label class="form-label">Location / Online Meeting Link</label>'
-        + '<input type="text" id="w-location" class="form-control" autocomplete="off" placeholder="Address or Google Meet URL" value="' + (formData.location_details || '') + '" />'
+        + '<input type="text" id="w-location" class="form-control" autocomplete="off" placeholder="Address or meeting URL" value="' + (formData.location_details || '') + '" />'
         + '<div id="location-suggestions" style="display:none; position:absolute; left:0; right:0; top:100%; background:#ffffff; border:1px solid var(--border-color); border-radius:8px; box-shadow:0 10px 25px rgba(0,0,0,0.12); z-index:1000; max-height:220px; overflow-y:auto; margin-top:4px;"></div>'
         + '<div id="location-preview" style="margin-top:0.45rem; font-size:0.85rem;"></div>'
         + '</div>'
@@ -203,7 +203,7 @@ export async function renderWizard(container, { param: eventId }) {
       for (let i = 0; i < formData.custom_fields.length; i++) {
         const cf = formData.custom_fields[i];
         customFieldsHtml += '<div style="display:flex; gap:0.5rem; align-items:center; margin-bottom:0.6rem;">'
-          + '<input type="text" class="form-control input-cf-label" value="' + (cf.label || '') + '" placeholder="Question name (e.g. ID, Member Number, Dietary)" style="background:#fff;" />'
+          + '<input type="text" class="form-control input-cf-label" value="' + (cf.label || '') + '" placeholder="e.g. ID or Member Number" style="background:#fff;" />'
           + '<label style="display:flex; align-items:center; gap:0.35rem; font-size:0.85rem; white-space:nowrap; font-weight:600;">'
           + '<input type="checkbox" class="input-cf-req" ' + (cf.required ? 'checked' : '') + ' /> Required'
           + '</label>'
@@ -214,14 +214,12 @@ export async function renderWizard(container, { param: eventId }) {
       stepContent = '<div class="card">'
         + '<h2 style="font-size:1.25rem; font-weight:700; margin-bottom:1.25rem;">Step 3: Access, Reminders & Questions</h2>'
         
-        // Passcode Protection
         + '<div class="form-group">'
         + '<label class="form-label" style="font-weight:600;">🔒 Passcode Protection (Optional)</label>'
         + '<input type="text" id="w-passcode" class="form-control" placeholder="Leave blank for public access" value="' + (formData.passcode_plain || '') + '" autocomplete="off" />'
         + '<small style="color:var(--text-muted);">When set, participants must enter this passcode before event details and timeslots appear.</small>'
         + '</div>'
 
-        // Multi-Reminder Management Card
         + '<div class="card" style="background:#f8fafc; border:1px solid var(--border-color); padding:1.25rem; margin:1.5rem 0; border-radius:10px;">'
         + '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.75rem; flex-wrap:wrap; gap:0.5rem;">'
         + '<div>'
@@ -233,7 +231,6 @@ export async function renderWizard(container, { param: eventId }) {
         + '<div id="reminders-list-box">' + remindersListHtml + '</div>'
         + '</div>'
 
-        // Custom Registration Questions
         + '<div class="form-group">'
         + '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">'
         + '<div>'
@@ -375,7 +372,6 @@ export async function renderWizard(container, { param: eventId }) {
 
           const plainPasscode = formData.passcode_plain ? formData.passcode_plain.trim() : null;
 
-          // Universal Payload: Self-contained
           const eventPayload = {
             organizer_id: user.id,
             name: formData.name,
@@ -392,9 +388,11 @@ export async function renderWizard(container, { param: eventId }) {
             reminder_frequency: formData.reminders[0]?.schedule || '24h',
             reminders_config: formData.reminders,
             custom_fields: formData.custom_fields,
+            custom_fields_config: formData.custom_fields,
             status: 'published'
           };
 
+          // 1. Update / Insert Events table
           if (isEdit) {
             const { error: updErr } = await supabase.from('events').update(eventPayload).eq('id', eventId);
             if (updErr) throw updErr;
@@ -404,8 +402,17 @@ export async function renderWizard(container, { param: eventId }) {
             savedEventId = newEv.id;
           }
 
-          // Dates
+          // 2. CRITICAL DELETION SEQUENCE: Child tables FIRST, then parent
+          // Delete timeslots first to prevent foreign key errors
+          await supabase.from('timeslots').delete().eq('event_id', savedEventId);
+
+          // Delete custom fields
+          await supabase.from('event_custom_fields').delete().eq('event_id', savedEventId);
+
+          // Delete event dates parent table
           await supabase.from('event_dates').delete().eq('event_id', savedEventId);
+
+          // 3. Insert new event_date
           const { data: insertedDate, error: dateErr } = await supabase.from('event_dates').insert({
             event_id: savedEventId,
             event_date: formData.event_date,
@@ -416,9 +423,8 @@ export async function renderWizard(container, { param: eventId }) {
 
           if (dateErr) throw dateErr;
 
-          // Also populate event_custom_fields table for backward compatibility
-          await supabase.from('event_custom_fields').delete().eq('event_id', savedEventId);
-          if (formData.custom_fields.length > 0) {
+          // 4. Insert into event_custom_fields table
+          if (formData.custom_fields && formData.custom_fields.length > 0) {
             const cfInserts = formData.custom_fields.map((c, i) => ({
               event_id: savedEventId,
               label: c.label,
@@ -429,8 +435,7 @@ export async function renderWizard(container, { param: eventId }) {
             await supabase.from('event_custom_fields').insert(cfInserts);
           }
 
-          // Generate Timeslots
-          await supabase.from('timeslots').delete().eq('event_id', savedEventId);
+          // 5. Generate and insert brand new timeslots for the new timing window
           const slotsToInsert = [];
           const tracks = Math.max(1, formData.parallel_tracks || 1);
 
@@ -477,13 +482,15 @@ export async function renderWizard(container, { param: eventId }) {
           }
 
           if (slotsToInsert.length > 0) {
-            await supabase.from('timeslots').insert(slotsToInsert);
+            const { error: slotErr } = await supabase.from('timeslots').insert(slotsToInsert);
+            if (slotErr) throw slotErr;
           }
 
-          toast('Event saved successfully!', 'success');
+          toast('Event updated successfully with new schedule and questions!', 'success');
           window.location.hash = '#/publish/' + savedEventId;
 
         } catch (err) {
+          console.error('Save failed:', err);
           toast('Error saving event: ' + err.message, 'danger');
           btnSave.disabled = false;
           btnSave.innerText = isEdit ? 'Update Event' : 'Save & Publish Event';
