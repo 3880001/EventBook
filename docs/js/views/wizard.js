@@ -1,7 +1,7 @@
 import { supabase } from '../supabaseClient.js';
 import { toast } from '../utils/ui.js';
 import { attachLocationAutocomplete } from '../utils/location.js';
-import { getCustomFields, getEventPasscode } from '../utils/eventEngine.js';
+import { getCustomFields, getEventPasscode, createZonedISO } from '../utils/eventEngine.js';
 
 export async function renderWizard(container, { param: eventId }) {
   container.innerHTML = '<div class="loader-center"><div class="spinner"></div></div>';
@@ -16,19 +16,21 @@ export async function renderWizard(container, { param: eventId }) {
 
   let isEdit = !!eventId;
   let currentStep = 1;
+  const detectedTz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/Toronto';
 
   let formData = {
     name: '',
     slug: '',
     description: '',
     location_details: '',
+    timezone: detectedTz,
     event_date: new Date().toISOString().split('T')[0],
-    start_time: '09:00',
+    start_time: '12:00',
     end_time: '17:00',
     is_full_day: false,
-    slot_duration_minutes: 15,
-    buffer_minutes: 0,
-    parallel_tracks: 1,
+    slot_duration_minutes: 10,
+    buffer_minutes: 5,
+    parallel_tracks: 2,
     passcode_plain: '',
     reminders: [{ stage: 1, schedule: '24h' }],
     custom_fields: []
@@ -52,13 +54,14 @@ export async function renderWizard(container, { param: eventId }) {
       slug: ev.slug || '',
       description: ev.description || '',
       location_details: ev.location_details || '',
+      timezone: ev.timezone || detectedTz,
       event_date: ed.event_date || new Date().toISOString().split('T')[0],
-      start_time: (ed.start_time || '09:00:00').slice(0, 5),
+      start_time: (ed.start_time || '12:00:00').slice(0, 5),
       end_time: (ed.end_time || '17:00:00').slice(0, 5),
       is_full_day: !!ed.is_full_day || ev.slot_duration_minutes >= 480,
-      slot_duration_minutes: ev.slot_duration_minutes || 15,
-      buffer_minutes: ev.buffer_minutes || 0,
-      parallel_tracks: ev.parallel_tracks || 1,
+      slot_duration_minutes: ev.slot_duration_minutes || 10,
+      buffer_minutes: ev.buffer_minutes || 5,
+      parallel_tracks: ev.parallel_tracks || 2,
       passcode_plain: getEventPasscode(ev),
       reminders: (ev.reminders_config && Array.isArray(ev.reminders_config) && ev.reminders_config.length > 0) 
         ? ev.reminders_config 
@@ -74,6 +77,7 @@ export async function renderWizard(container, { param: eventId }) {
       formData.description = document.getElementById('w-description')?.value.trim() || formData.description;
       formData.location_details = document.getElementById('w-location')?.value.trim() || formData.location_details;
     } else if (currentStep === 2) {
+      formData.timezone = document.getElementById('w-timezone')?.value.trim() || formData.timezone;
       formData.event_date = document.getElementById('w-date')?.value || formData.event_date;
       formData.is_full_day = !!document.getElementById('w-full-day')?.checked;
       formData.start_time = document.getElementById('w-start-time')?.value || formData.start_time;
@@ -109,7 +113,7 @@ export async function renderWizard(container, { param: eventId }) {
         + '<div class="form-group">'
         + '<label class="form-label">Custom URL Slug *</label>'
         + '<input type="text" id="w-slug" class="form-control" placeholder="parent-teacher-meeting" value="' + (formData.slug || '') + '" required />'
-        + '<small style="color:var(--text-muted);">Unique URL identifier for participant bookings</small>'
+        + '<small style="color:var(--text-muted);">Unique identifier for your public booking link</small>'
         + '</div>'
         + '<div class="form-group">'
         + '<label class="form-label">Description</label>'
@@ -129,6 +133,17 @@ export async function renderWizard(container, { param: eventId }) {
     } else if (currentStep === 2) {
       stepContent = '<div class="card">'
         + '<h2 style="font-size:1.25rem; font-weight:700; margin-bottom:1.25rem;">Step 2: Timing & Capacity</h2>'
+        
+        // Timezone Selector Locked to Creator's Region
+        + '<div class="form-group" style="background:#f1f5f9; padding:0.85rem 1rem; border-radius:10px; border:1px solid #cbd5e1; margin-bottom:1.25rem;">'
+        + '<label class="form-label" style="font-weight:700; margin-bottom:4px; display:flex; justify-content:space-between;">'
+        + '<span>🌐 Event Timezone (Creator\'s Local Time)</span>'
+        + '<span style="font-size:0.75rem; color:#059669; font-weight:700; text-transform:uppercase;">✓ Auto-Detected</span>'
+        + '</label>'
+        + '<input type="text" id="w-timezone" class="form-control" value="' + formData.timezone + '" style="background:#fff; font-weight:700; font-family:monospace;" />'
+        + '<small style="color:var(--text-muted);">All timeslots will be scheduled and displayed in this timezone.</small>'
+        + '</div>'
+
         + '<div class="form-group">'
         + '<label class="form-label">Event Date *</label>'
         + '<input type="date" id="w-date" class="form-control" value="' + formData.event_date + '" required />'
@@ -217,7 +232,7 @@ export async function renderWizard(container, { param: eventId }) {
         + '<div class="form-group">'
         + '<label class="form-label" style="font-weight:600;">🔒 Passcode Protection (Optional)</label>'
         + '<input type="text" id="w-passcode" class="form-control" placeholder="Leave blank for public access" value="' + (formData.passcode_plain || '') + '" autocomplete="off" />'
-        + '<small style="color:var(--text-muted);">When set, participants must enter this passcode before event details and timeslots appear.</small>'
+        + '<small style="color:var(--text-muted);">When set, participants must enter this passcode before event details appear.</small>'
         + '</div>'
 
         + '<div class="card" style="background:#f8fafc; border:1px solid var(--border-color); padding:1.25rem; margin:1.5rem 0; border-radius:10px;">'
@@ -378,6 +393,7 @@ export async function renderWizard(container, { param: eventId }) {
             slug: finalSlug,
             description: formData.description,
             location_details: formData.location_details,
+            timezone: formData.timezone,
             slot_duration_minutes: formData.is_full_day ? 480 : formData.slot_duration_minutes,
             buffer_minutes: formData.is_full_day ? 0 : formData.buffer_minutes,
             parallel_tracks: formData.parallel_tracks,
@@ -402,17 +418,11 @@ export async function renderWizard(container, { param: eventId }) {
             savedEventId = newEv.id;
           }
 
-          // 2. CRITICAL DELETION SEQUENCE: Child tables FIRST, then parent
-          // Delete timeslots first to prevent foreign key errors
+          // 2. Child tables deletion order
           await supabase.from('timeslots').delete().eq('event_id', savedEventId);
-
-          // Delete custom fields
           await supabase.from('event_custom_fields').delete().eq('event_id', savedEventId);
-
-          // Delete event dates parent table
           await supabase.from('event_dates').delete().eq('event_id', savedEventId);
 
-          // 3. Insert new event_date
           const { data: insertedDate, error: dateErr } = await supabase.from('event_dates').insert({
             event_id: savedEventId,
             event_date: formData.event_date,
@@ -423,7 +433,6 @@ export async function renderWizard(container, { param: eventId }) {
 
           if (dateErr) throw dateErr;
 
-          // 4. Insert into event_custom_fields table
           if (formData.custom_fields && formData.custom_fields.length > 0) {
             const cfInserts = formData.custom_fields.map((c, i) => ({
               event_id: savedEventId,
@@ -435,17 +444,20 @@ export async function renderWizard(container, { param: eventId }) {
             await supabase.from('event_custom_fields').insert(cfInserts);
           }
 
-          // 5. Generate and insert brand new timeslots for the new timing window
+          // 3. Generate slots using timezone-aware ISO converter
           const slotsToInsert = [];
           const tracks = Math.max(1, formData.parallel_tracks || 1);
+          const tz = formData.timezone;
 
           if (formData.is_full_day) {
+            const slotStartISO = createZonedISO(formData.event_date, '09:00', tz);
+            const slotEndISO = createZonedISO(formData.event_date, '17:00', tz);
             for (let tr = 1; tr <= tracks; tr++) {
               slotsToInsert.push({
                 event_id: savedEventId,
                 event_date_id: insertedDate ? insertedDate.id : null,
-                start_time: formData.event_date + 'T09:00:00',
-                end_time: formData.event_date + 'T17:00:00',
+                start_time: slotStartISO,
+                end_time: slotEndISO,
                 track_number: tr,
                 status: 'available'
               });
@@ -453,8 +465,8 @@ export async function renderWizard(container, { param: eventId }) {
           } else {
             const [sHour, sMin] = formData.start_time.split(':').map(Number);
             const [eHour, eMin] = formData.end_time.split(':').map(Number);
-            const duration = formData.slot_duration_minutes || 15;
-            const buffer = formData.buffer_minutes || 0;
+            const duration = formData.slot_duration_minutes || 10;
+            const buffer = formData.buffer_minutes || 5;
 
             let currentMinutes = sHour * 60 + sMin;
             const endMinutes = eHour * 60 + eMin;
@@ -466,12 +478,15 @@ export async function renderWizard(container, { param: eventId }) {
               const endH = String(Math.floor(endMinCalc / 60)).padStart(2, '0');
               const endM = String(endMinCalc % 60).padStart(2, '0');
 
+              const slotStartISO = createZonedISO(formData.event_date, `${startH}:${startM}`, tz);
+              const slotEndISO = createZonedISO(formData.event_date, `${endH}:${endM}`, tz);
+
               for (let tr = 1; tr <= tracks; tr++) {
                 slotsToInsert.push({
                   event_id: savedEventId,
                   event_date_id: insertedDate ? insertedDate.id : null,
-                  start_time: formData.event_date + 'T' + startH + ':' + startM + ':00',
-                  end_time: formData.event_date + 'T' + endH + ':' + endM + ':00',
+                  start_time: slotStartISO,
+                  end_time: slotEndISO,
                   track_number: tr,
                   status: 'available'
                 });
@@ -486,7 +501,7 @@ export async function renderWizard(container, { param: eventId }) {
             if (slotErr) throw slotErr;
           }
 
-          toast('Event updated successfully with new schedule and questions!', 'success');
+          toast('Event saved with locked timezone!', 'success');
           window.location.hash = '#/publish/' + savedEventId;
 
         } catch (err) {
