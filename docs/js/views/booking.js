@@ -2,7 +2,7 @@ import { supabase } from '../supabaseClient.js';
 import { toast, generateQRCodeDataURI } from '../utils/ui.js';
 import { sendBookingConfirmationEmail } from '../utils/emailService.js';
 import { formatLocationHtml } from '../utils/location.js';
-import { isEventPast, getCustomFields, getEventPasscode, hasEventPasscode } from '../utils/eventEngine.js';
+import { isEventPast, getCustomFields, getEventPasscode, hasEventPasscode, formatEventTime, formatEventDate } from '../utils/eventEngine.js';
 
 export async function renderBookingPage(container, { param: slug, query }) {
   if (!slug) {
@@ -125,6 +125,7 @@ async function renderBookingWorkspace(container, event, hasPasscode) {
   let activeDateId = event.event_dates && event.event_dates[0] ? event.event_dates[0].id : null;
   let activeTrack = 'all';
 
+  const eventTimezone = event.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/Toronto';
   const isFullDayEvent = (event.event_dates && event.event_dates.some(d => d.is_full_day)) || (event.slot_duration_minutes >= 480);
 
   async function loadTimeslots() {
@@ -154,7 +155,7 @@ async function renderBookingWorkspace(container, event, hasPasscode) {
     const durationLabel = isFullDayEvent ? 'Whole Day Event' : (event.slot_duration_minutes + ' Mins Duration');
 
     // ==========================================
-    // STAGE 1: PARTICIPANT INFO & ID GATE (LOCKED)
+    // STAGE 1: PARTICIPANT INFO & ID GATE (FIRST)
     // ==========================================
     if (!isParticipantVerified) {
       let customFieldsInputsHtml = '';
@@ -173,7 +174,7 @@ async function renderBookingWorkspace(container, event, hasPasscode) {
 
           customFieldsInputsHtml += '<div class="form-group" style="margin-bottom:1rem;">'
             + '<label class="form-label" style="font-weight:700; font-size:0.95rem;">' + cf.label + reqBadge + '</label>'
-            + '<input type="' + (cf.field_type || 'text') + '" class="form-control gate-custom-field" data-label="' + cf.label.replace(/"/g, '&quot;') + '" data-required="' + (isReq ? 'true' : 'false') + '" value="' + existingVal.replace(/"/g, '&quot;') + '" placeholder="Enter your ' + cf.label.replace(/"/g, '&quot;') + ' (e.g. 557657)" style="background:#fff; border:1px solid #cbd5e1; padding:0.65rem; font-size:0.95rem;" />'
+            + '<input type="' + (cf.field_type || 'text') + '" class="form-control gate-custom-field" data-label="' + cf.label.replace(/"/g, '&quot;') + '" data-required="' + (isReq ? 'true' : 'false') + '" value="' + existingVal.replace(/"/g, '&quot;') + '" placeholder="Enter your ' + cf.label.replace(/"/g, '&quot;') + '" style="background:#fff; border:1px solid #cbd5e1; padding:0.65rem; font-size:0.95rem;" />'
             + '</div>';
         }
         customFieldsInputsHtml += '</div>';
@@ -189,6 +190,7 @@ async function renderBookingWorkspace(container, event, hasPasscode) {
         + '<div style="display:flex; gap:1.25rem; margin-top:1rem; flex-wrap:wrap; font-size:0.875rem; color:var(--text-muted);">'
         + '<div style="display:flex; align-items:center; gap:0.35rem;">' + formatLocationHtml(event.location_details, 'Online') + '</div>'
         + '<div style="display:flex; align-items:center; gap:0.35rem;"><span>⏱️</span> ' + durationLabel + '</div>'
+        + '<div style="display:flex; align-items:center; gap:0.35rem;"><span>🌐</span> <strong>' + eventTimezone + '</strong></div>'
         + '</div>'
         + '</div>'
 
@@ -231,7 +233,7 @@ async function renderBookingWorkspace(container, event, hasPasscode) {
     }
 
     // ==========================================
-    // STAGE 2: SLOTS SELECTION & CONFIRMATION
+    // STAGE 2: SLOTS SELECTION (TIMEZONE-AWARE)
     // ==========================================
     const currentSlots = timeslots.filter(s => {
       const matchDate = (!activeDateId || !s.event_date_id || event.event_dates?.length <= 1) ? true : (s.event_date_id === activeDateId);
@@ -251,7 +253,7 @@ async function renderBookingWorkspace(container, event, hasPasscode) {
       for (let i = 0; i < event.event_dates.length; i++) {
         const d = event.event_dates[i];
         const btnClass = (d.id === activeDateId) ? 'btn-primary' : 'btn-secondary';
-        const formattedDate = new Date(d.event_date + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+        const formattedDate = formatEventDate(d.event_date + 'T12:00:00Z', eventTimezone);
         dateButtons += '<button class="btn ' + btnClass + ' btn-sm btn-filter-date" data-id="' + d.id + '">' + formattedDate + '</button>';
       }
       datesTabsHtml = '<div style="margin-bottom:1.25rem;"><label class="form-label">Select Date</label><div style="display:flex; gap:0.5rem; flex-wrap:wrap;">' + dateButtons + '</div></div>';
@@ -276,7 +278,7 @@ async function renderBookingWorkspace(container, event, hasPasscode) {
       const buttonText = selectedSlot ? '✓ Full Day Selected' : 'Select Full Day';
       const buttonClass = selectedSlot ? 'btn-primary' : 'btn-secondary';
       const dateLabel = activeDateObj 
-        ? new Date(activeDateObj.event_date + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
+        ? formatEventDate(activeDateObj.event_date + 'T12:00:00Z', eventTimezone)
         : 'Whole Day Pass';
       const startTimeLabel = activeDateObj && activeDateObj.start_time ? activeDateObj.start_time.slice(0, 5) : '12:00';
       const endTimeLabel = activeDateObj && activeDateObj.end_time ? activeDateObj.end_time.slice(0, 5) : '17:00';
@@ -286,7 +288,7 @@ async function renderBookingWorkspace(container, event, hasPasscode) {
         + '<div>'
         + '<div style="display:inline-block; background:#e0e7ff; color:#3730a3; font-weight:700; font-size:0.75rem; padding:2px 8px; border-radius:4px; text-transform:uppercase; margin-bottom:0.4rem;">Full Day Session</div>'
         + '<h3 style="font-size:1.15rem; font-weight:700; margin:0;">' + dateLabel + '</h3>'
-        + '<p style="color:var(--text-muted); font-size:0.875rem; margin-top:0.25rem;">Open session from ' + startTimeLabel + ' to ' + endTimeLabel + '.</p>'
+        + '<p style="color:var(--text-muted); font-size:0.875rem; margin-top:0.25rem;">Open session from ' + startTimeLabel + ' to ' + endTimeLabel + ' (' + eventTimezone + ').</p>'
         + '</div>'
         + '<div>' + (isBooked ? '<span class="badge badge-warning">Fully Booked</span>' : '<button type="button" id="btn-select-fullday" class="btn ' + buttonClass + '" style="padding:0.65rem 1.25rem; font-weight:600;">' + buttonText + '</button>') + '</div>'
         + '</div></div>';
@@ -299,8 +301,10 @@ async function renderBookingWorkspace(container, event, hasPasscode) {
         const isBooked = slot.status === 'booked';
         const isSelected = selectedSlot && selectedSlot.id === slot.id;
         const btnClass = isSelected ? 'btn-primary' : (isBooked ? 'btn-slot-booked' : 'btn-secondary');
-        const startTimeStr = new Date(slot.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        const endTimeStr = new Date(slot.end_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+        // Formatted with locked event timezone
+        const startTimeStr = formatEventTime(slot.start_time, eventTimezone);
+        const endTimeStr = formatEventTime(slot.end_time, eventTimezone);
         const trackTag = (event.parallel_tracks > 1 && slot.track_number) ? (' • Track ' + slot.track_number) : '';
         const subText = isBooked ? 'Booked' : (endTimeStr + trackTag);
 
@@ -313,7 +317,6 @@ async function renderBookingWorkspace(container, event, hasPasscode) {
       slotsDisplayHtml = '<div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap:0.65rem; margin-top:0.5rem;">' + slotButtons + '</div>';
     }
 
-    // Verified Attendee Badge Header
     let customSummary = Object.entries(participantData.customResponses).map(([k, v]) => k + ': ' + v).join(' • ');
     let verifiedBanner = '<div style="background:#ecfdf5; border:1px solid #a7f3d0; border-radius:10px; padding:12px 16px; margin-bottom:1.5rem; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.75rem;">'
       + '<div>'
@@ -329,11 +332,11 @@ async function renderBookingWorkspace(container, event, hasPasscode) {
     if (selectedSlot) {
       let selectedTimeLabel = 'Whole Day Session';
       if (selectedSlot.start_time) {
-        selectedTimeLabel = new Date(selectedSlot.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-          + ' - ' + new Date(selectedSlot.end_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        selectedTimeLabel = formatEventTime(selectedSlot.start_time, eventTimezone)
+          + ' - ' + formatEventTime(selectedSlot.end_time, eventTimezone);
       }
       slotNoticeHtml = '<div style="background:#eff6ff; border:1px solid #bfdbfe; color:#1e40af; padding:10px 14px; border-radius:8px; font-size:0.9rem; font-weight:700; margin-bottom:1.25rem;">'
-        + '✓ Selected Appointment: ' + selectedTimeLabel
+        + '✓ Selected Appointment: ' + selectedTimeLabel + ' (' + eventTimezone + ')'
         + '</div>';
     }
 
@@ -347,15 +350,16 @@ async function renderBookingWorkspace(container, event, hasPasscode) {
       + '<div style="display:flex; gap:1.25rem; margin-top:1rem; flex-wrap:wrap; font-size:0.875rem; color:var(--text-muted);">'
       + '<div style="display:flex; align-items:center; gap:0.35rem;">' + formatLocationHtml(event.location_details, 'Online') + '</div>'
       + '<div style="display:flex; align-items:center; gap:0.35rem;"><span>⏱️</span> ' + durationLabel + '</div>'
+      + '<div style="display:flex; align-items:center; gap:0.35rem;"><span>🌐</span> <strong>' + eventTimezone + '</strong></div>'
       + '</div>'
       + '</div>'
 
       + verifiedBanner
 
       + '<div class="card" style="margin-bottom:2rem;">'
-      + '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem; flex-wrap:wrap; gap:0.5rem;">'
+      + '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem; flex-wrap:gap:0.5rem;">'
       + '<h2 style="font-size:1.25rem; font-weight:700; margin:0;">2. Select Appointment Timeslot</h2>'
-      + '<span style="font-size:0.85rem; color:var(--text-muted); font-weight:600;">' + currentSlots.length + ' Slots Available</span>'
+      + '<span style="font-size:0.85rem; color:var(--text-muted); font-weight:600;">' + currentSlots.length + ' Slots Available (' + eventTimezone + ')</span>'
       + '</div>'
       + slotNoticeHtml
       + datesTabsHtml
@@ -410,7 +414,6 @@ async function renderBookingWorkspace(container, event, hasPasscode) {
         }
         if (emailEl) emailEl.style.border = '';
 
-        // Validate custom questions (e.g. ID)
         const customInputs = document.querySelectorAll('.gate-custom-field');
         const responses = {};
 
@@ -431,7 +434,6 @@ async function renderBookingWorkspace(container, event, hasPasscode) {
           if (val) responses[label] = val;
         }
 
-        // Passed validation: Unlock Timeslots
         participantData = { fullName, email, phone, customResponses: responses };
         isParticipantVerified = true;
         toast('Details verified! Please choose your timeslot.', 'success');
@@ -570,11 +572,12 @@ async function renderBookingWorkspace(container, event, hasPasscode) {
 }
 
 function renderConfirmationScreen(container, event, slot, bookingRef, participantName, activeDateObj) {
+  const tz = event.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/Toronto';
   let startStr = 'Whole Day Session';
   if (slot && slot.start_time) {
-    startStr = new Date(slot.start_time).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
+    startStr = formatEventDate(slot.start_time, tz) + ' at ' + formatEventTime(slot.start_time, tz) + ' (' + tz + ')';
   } else if (activeDateObj && activeDateObj.event_date) {
-    startStr = new Date(activeDateObj.event_date + 'T00:00:00').toLocaleDateString(undefined, { dateStyle: 'medium' });
+    startStr = formatEventDate(activeDateObj.event_date + 'T12:00:00Z', tz);
   }
 
   const basePath = window.location.pathname.endsWith('/') 
