@@ -1,15 +1,15 @@
-import { Router } from './router.js?v=28';
-import { renderDashboard, renderMyEvents } from './views/dashboard.js?v=28';
-import { renderWizard } from './views/wizard.js?v=28';
-import { renderPublishPage } from './views/publish.js?v=28';
-import { renderBookingPage } from './views/booking.js?v=28';
-import { renderTicketPage } from './views/ticket.js?v=28';
-import { renderRsvpPage } from './views/rsvp.js?v=28';
-import { renderAdminDashboard } from './views/admin.js?v=28';
-import { renderAnalyticsPage } from './views/analytics.js?v=28';
-import { renderFeedbackPage } from './views/feedback.js?v=28';
-import { renderAuthPage } from './views/auth.js?v=28';
-import { supabase } from './supabaseClient.js?v=28';
+import { Router } from './router.js?v=29';
+import { renderDashboard, renderMyEvents } from './views/dashboard.js?v=29';
+import { renderWizard } from './views/wizard.js?v=29';
+import { renderPublishPage } from './views/publish.js?v=29';
+import { renderBookingPage } from './views/booking.js?v=29';
+import { renderTicketPage } from './views/ticket.js?v=29';
+import { renderRsvpPage } from './views/rsvp.js?v=29';
+import { renderAdminDashboard } from './views/admin.js?v=29';
+import { renderAnalyticsPage } from './views/analytics.js?v=29';
+import { renderFeedbackPage } from './views/feedback.js?v=29';
+import { renderAuthPage } from './views/auth.js?v=29';
+import { supabase } from './supabaseClient.js?v=29';
 
 // Route Registry
 const routes = {
