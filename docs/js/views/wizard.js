@@ -1,6 +1,7 @@
 import { supabase } from '../supabaseClient.js';
 import { toast } from '../utils/ui.js';
 import { attachLocationAutocomplete } from '../utils/location.js';
+import { getCustomFields, getEventPasscode } from '../utils/eventEngine.js';
 
 export async function renderWizard(container, { param: eventId }) {
   container.innerHTML = '<div class="loader-center"><div class="spinner"></div></div>';
@@ -29,9 +30,7 @@ export async function renderWizard(container, { param: eventId }) {
     buffer_minutes: 0,
     parallel_tracks: 1,
     passcode_plain: '',
-    reminders: [
-      { stage: 1, schedule: '24h' }
-    ],
+    reminders: [{ stage: 1, schedule: '24h' }],
     custom_fields: []
   };
 
@@ -60,27 +59,41 @@ export async function renderWizard(container, { param: eventId }) {
       slot_duration_minutes: ev.slot_duration_minutes || 15,
       buffer_minutes: ev.buffer_minutes || 0,
       parallel_tracks: ev.parallel_tracks || 1,
-      passcode_plain: ev.passcode_plain || '',
+      passcode_plain: getEventPasscode(ev),
       reminders: (ev.reminders_config && Array.isArray(ev.reminders_config) && ev.reminders_config.length > 0) 
         ? ev.reminders_config 
         : [{ stage: 1, schedule: '24h' }],
-      custom_fields: ev.event_custom_fields ? ev.event_custom_fields.map(c => ({ label: c.label, required: c.required })) : []
+      custom_fields: getCustomFields(ev)
     };
   }
 
-  function syncStep3Data() {
-    const passInput = document.getElementById('w-passcode');
-    if (passInput) {
-      formData.passcode_plain = passInput.value.trim();
+  function syncFormState() {
+    if (currentStep === 1) {
+      formData.name = document.getElementById('w-name')?.value.trim() || formData.name;
+      formData.slug = document.getElementById('w-slug')?.value.trim() || formData.slug;
+      formData.description = document.getElementById('w-description')?.value.trim() || formData.description;
+      formData.location_details = document.getElementById('w-location')?.value.trim() || formData.location_details;
+    } else if (currentStep === 2) {
+      formData.event_date = document.getElementById('w-date')?.value || formData.event_date;
+      formData.is_full_day = !!document.getElementById('w-full-day')?.checked;
+      formData.start_time = document.getElementById('w-start-time')?.value || formData.start_time;
+      formData.end_time = document.getElementById('w-end-time')?.value || formData.end_time;
+      formData.slot_duration_minutes = Number(document.getElementById('w-duration')?.value || formData.slot_duration_minutes);
+      formData.buffer_minutes = Number(document.getElementById('w-buffer')?.value || formData.buffer_minutes);
+      formData.parallel_tracks = Number(document.getElementById('w-tracks')?.value || formData.parallel_tracks);
+    } else if (currentStep === 3) {
+      const passInp = document.getElementById('w-passcode');
+      if (passInp) formData.passcode_plain = passInp.value.trim();
+
+      const labels = document.querySelectorAll('.input-cf-label');
+      const reqs = document.querySelectorAll('.input-cf-req');
+      const collected = [];
+      labels.forEach((lbl, i) => {
+        const val = lbl.value.trim();
+        if (val) collected.push({ label: val, required: reqs[i]?.checked || false, field_type: 'text' });
+      });
+      formData.custom_fields = collected;
     }
-    const labels = document.querySelectorAll('.input-cf-label');
-    const reqs = document.querySelectorAll('.input-cf-req');
-    const synced = [];
-    labels.forEach((lbl, i) => {
-      const val = lbl.value.trim();
-      if (val) synced.push({ label: val, required: reqs[i]?.checked || false });
-    });
-    formData.custom_fields = synced;
   }
 
   function render() {
@@ -91,23 +104,22 @@ export async function renderWizard(container, { param: eventId }) {
         + '<h2 style="font-size:1.25rem; font-weight:700; margin-bottom:1.25rem;">Step 1: Event Details</h2>'
         + '<div class="form-group">'
         + '<label class="form-label">Event Name *</label>'
-        + '<input type="text" id="w-name" class="form-control" placeholder="e.g. Parent Teacher Conference" value="' + (formData.name || '') + '" required />'
+        + '<input type="text" id="w-name" class="form-control" placeholder="e.g. Science Fair or Annual Meeting" value="' + (formData.name || '') + '" required />'
         + '</div>'
         + '<div class="form-group">'
         + '<label class="form-label">Custom URL Slug *</label>'
-        + '<input type="text" id="w-slug" class="form-control" placeholder="parent-teacher-meeting" value="' + (formData.slug || '') + '" required />'
-        + '<small style="color:var(--text-muted);">Unique identifier for your public booking link</small>'
+        + '<input type="text" id="w-slug" class="form-control" placeholder="annual-meeting" value="' + (formData.slug || '') + '" required />'
+        + '<small style="color:var(--text-muted);">Unique URL identifier for participant bookings</small>'
         + '</div>'
         + '<div class="form-group">'
         + '<label class="form-label">Description</label>'
-        + '<textarea id="w-description" class="form-control" rows="3" placeholder="Provide event instructions or details...">' + (formData.description || '') + '</textarea>'
+        + '<textarea id="w-description" class="form-control" rows="3" placeholder="Provide event instructions...">' + (formData.description || '') + '</textarea>'
         + '</div>'
         + '<div class="form-group" style="position:relative;">'
         + '<label class="form-label">Location / Online Meeting Link</label>'
-        + '<input type="text" id="w-location" class="form-control" autocomplete="off" placeholder="e.g. Tim Hortons, Ebenezer Rd or Google Meet link" value="' + (formData.location_details || '') + '" />'
+        + '<input type="text" id="w-location" class="form-control" autocomplete="off" placeholder="Address or Google Meet URL" value="' + (formData.location_details || '') + '" />'
         + '<div id="location-suggestions" style="display:none; position:absolute; left:0; right:0; top:100%; background:#ffffff; border:1px solid var(--border-color); border-radius:8px; box-shadow:0 10px 25px rgba(0,0,0,0.12); z-index:1000; max-height:220px; overflow-y:auto; margin-top:4px;"></div>'
         + '<div id="location-preview" style="margin-top:0.45rem; font-size:0.85rem;"></div>'
-        + '<small style="color:var(--text-muted);">Type an address for instant suggestions, or enter an online meeting link</small>'
         + '</div>'
         + '<div style="display:flex; justify-content:flex-end; margin-top:1.5rem;">'
         + '<button type="button" id="btn-next-step" class="btn btn-primary">Next: Timing & Capacity &rarr;</button>'
@@ -124,7 +136,7 @@ export async function renderWizard(container, { param: eventId }) {
         + '<div style="margin-bottom:1.25rem;">'
         + '<label style="display:flex; align-items:center; gap:0.5rem; cursor:pointer; font-weight:600;">'
         + '<input type="checkbox" id="w-full-day" ' + (formData.is_full_day ? 'checked' : '') + ' />'
-        + 'Full Day Session (Open session without fixed 15-minute slot intervals)'
+        + 'Full Day Session (Open session without fixed slot intervals)'
         + '</label>'
         + '</div>'
         + '<div id="timed-slots-config" style="display:' + (formData.is_full_day ? 'none' : 'block') + ';">'
@@ -152,7 +164,6 @@ export async function renderWizard(container, { param: eventId }) {
         + '<div class="form-group" style="margin-top:0.75rem;">'
         + '<label class="form-label">Parallel Tracks / Rooms (Concurrent Capacity)</label>'
         + '<input type="number" id="w-tracks" class="form-control" value="' + formData.parallel_tracks + '" min="1" max="10" />'
-        + '<small style="color:var(--text-muted);">Set to 2 or more if multiple hosts or rooms accept simultaneous bookings</small>'
         + '</div>'
         + '<div style="display:flex; justify-content:space-between; margin-top:1.5rem;">'
         + '<button type="button" id="btn-prev-step" class="btn btn-secondary">&larr; Back</button>'
@@ -183,7 +194,7 @@ export async function renderWizard(container, { param: eventId }) {
           + '<option value="30m"' + (rem.schedule === '30m' ? ' selected' : '') + '>30 Minutes Before</option>'
           + '<option value="15m"' + (rem.schedule === '15m' ? ' selected' : '') + '>15 Minutes Before</option>'
           + '</select>'
-          + (totalReminders > 1 ? '<button type="button" class="btn btn-secondary btn-sm btn-delete-reminder" data-index="' + i + '" style="color:var(--danger); border-color:#fca5a5;" title="Remove reminder">✕</button>' : '')
+          + (totalReminders > 1 ? '<button type="button" class="btn btn-secondary btn-sm btn-delete-reminder" data-index="' + i + '" style="color:var(--danger); border-color:#fca5a5;">✕</button>' : '')
           + '</div>'
           + '</div>';
       }
@@ -191,9 +202,9 @@ export async function renderWizard(container, { param: eventId }) {
       let customFieldsHtml = '';
       for (let i = 0; i < formData.custom_fields.length; i++) {
         const cf = formData.custom_fields[i];
-        customFieldsHtml += '<div style="display:flex; gap:0.5rem; align-items:center; margin-bottom:0.5rem;">'
-          + '<input type="text" class="form-control input-cf-label" value="' + cf.label + '" placeholder="Question / Field Name" />'
-          + '<label style="display:flex; align-items:center; gap:0.25rem; font-size:0.85rem; white-space:nowrap;">'
+        customFieldsHtml += '<div style="display:flex; gap:0.5rem; align-items:center; margin-bottom:0.6rem;">'
+          + '<input type="text" class="form-control input-cf-label" value="' + (cf.label || '') + '" placeholder="Question name (e.g. ID, Member Number, Dietary)" style="background:#fff;" />'
+          + '<label style="display:flex; align-items:center; gap:0.35rem; font-size:0.85rem; white-space:nowrap; font-weight:600;">'
           + '<input type="checkbox" class="input-cf-req" ' + (cf.required ? 'checked' : '') + ' /> Required'
           + '</label>'
           + '<button type="button" class="btn btn-secondary btn-sm btn-remove-cf" data-index="' + i + '" style="color:var(--danger); border-color:#fca5a5;">✕</button>'
@@ -203,11 +214,11 @@ export async function renderWizard(container, { param: eventId }) {
       stepContent = '<div class="card">'
         + '<h2 style="font-size:1.25rem; font-weight:700; margin-bottom:1.25rem;">Step 3: Access, Reminders & Questions</h2>'
         
-        // Passcode Protection Input
+        // Passcode Protection
         + '<div class="form-group">'
         + '<label class="form-label" style="font-weight:600;">🔒 Passcode Protection (Optional)</label>'
-        + '<input type="text" id="w-passcode" class="form-control" placeholder="Leave empty for public access" value="' + (formData.passcode_plain || '') + '" autocomplete="off" />'
-        + '<small style="color:var(--text-muted);">When set, participants must enter this passcode before event details and timeslots are revealed.</small>'
+        + '<input type="text" id="w-passcode" class="form-control" placeholder="Leave blank for public access" value="' + (formData.passcode_plain || '') + '" autocomplete="off" />'
+        + '<small style="color:var(--text-muted);">When set, participants must enter this passcode before event details and timeslots appear.</small>'
         + '</div>'
 
         // Multi-Reminder Management Card
@@ -217,7 +228,7 @@ export async function renderWizard(container, { param: eventId }) {
         + '<h3 style="font-size:1.05rem; font-weight:700; margin:0;">🔔 Email Reminder Management</h3>'
         + '<p style="color:var(--text-muted); font-size:0.825rem; margin-top:2px;">Select and configure up to 3 individual scheduled reminders.</p>'
         + '</div>'
-        + (totalReminders < 3 ? '<button type="button" id="btn-add-reminder" class="btn btn-secondary btn-sm" style="font-weight:600;">+ Add Reminder</button>' : '<span style="font-size:0.75rem; color:var(--text-muted); font-weight:600;">Maximum 3 reminders</span>')
+        + (totalReminders < 3 ? '<button type="button" id="btn-add-reminder" class="btn btn-secondary btn-sm" style="font-weight:600;">+ Add Reminder</button>' : '<span style="font-size:0.75rem; color:var(--text-muted); font-weight:600;">Max 3</span>')
         + '</div>'
         + '<div id="reminders-list-box">' + remindersListHtml + '</div>'
         + '</div>'
@@ -225,7 +236,10 @@ export async function renderWizard(container, { param: eventId }) {
         // Custom Registration Questions
         + '<div class="form-group">'
         + '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">'
-        + '<label class="form-label" style="margin:0;">Custom Registration Questions</label>'
+        + '<div>'
+        + '<label class="form-label" style="margin:0; font-weight:700;">Custom Registration Questions</label>'
+        + '<p style="color:var(--text-muted); font-size:0.8rem; margin:2px 0 0 0;">Questions attendees must answer when booking (e.g. ID, Member #).</p>'
+        + '</div>'
         + '<button type="button" id="btn-add-cf" class="btn btn-secondary btn-sm">+ Add Question</button>'
         + '</div>'
         + '<div id="cf-container">' + customFieldsHtml + '</div>'
@@ -261,90 +275,35 @@ export async function renderWizard(container, { param: eventId }) {
       }
     }
 
-    if (currentStep === 3) {
-      const passInput = document.getElementById('w-passcode');
-      if (passInput) {
-        passInput.oninput = () => {
-          formData.passcode_plain = passInput.value.trim();
-        };
-      }
-    }
-
-    const nameInput = document.getElementById('w-name');
-    if (nameInput) {
-      nameInput.oninput = () => {
-        formData.name = nameInput.value;
-        if (!isEdit && !formData.slugEdited) {
-          const generated = nameInput.value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
-          const slugInput = document.getElementById('w-slug');
-          if (slugInput) {
-            slugInput.value = generated;
-            formData.slug = generated;
-          }
-        }
-      };
-    }
-
-    const slugInput = document.getElementById('w-slug');
-    if (slugInput) {
-      slugInput.oninput = () => {
-        formData.slugEdited = true;
-        formData.slug = slugInput.value.trim();
-      };
-    }
-
-    const fullDayCheckbox = document.getElementById('w-full-day');
-    if (fullDayCheckbox) {
-      fullDayCheckbox.onchange = () => {
-        formData.is_full_day = fullDayCheckbox.checked;
-        const configBox = document.getElementById('timed-slots-config');
-        if (configBox) configBox.style.display = fullDayCheckbox.checked ? 'none' : 'block';
-      };
-    }
-
     const btnNext = document.getElementById('btn-next-step');
     if (btnNext) {
       btnNext.onclick = () => {
+        syncFormState();
         if (currentStep === 1) {
-          const nameVal = document.getElementById('w-name')?.value.trim();
-          let slugVal = document.getElementById('w-slug')?.value.trim();
-          if (!nameVal) return toast('Please enter an event name', 'danger');
-          if (!slugVal) slugVal = nameVal.toLowerCase().replace(/[^a-z0-9]+/g, '-');
-
-          formData.name = nameVal;
-          formData.slug = slugVal;
-          formData.description = document.getElementById('w-description')?.value.trim() || '';
-          formData.location_details = document.getElementById('w-location')?.value.trim() || '';
+          if (!formData.name) return toast('Please enter an event name', 'danger');
+          if (!formData.slug) formData.slug = formData.name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
           currentStep = 2;
-          render();
         } else if (currentStep === 2) {
-          formData.event_date = document.getElementById('w-date')?.value || formData.event_date;
-          formData.is_full_day = !!document.getElementById('w-full-day')?.checked;
-          formData.start_time = document.getElementById('w-start-time')?.value || '09:00';
-          formData.end_time = document.getElementById('w-end-time')?.value || '17:00';
-          formData.slot_duration_minutes = Number(document.getElementById('w-duration')?.value || 15);
-          formData.buffer_minutes = Number(document.getElementById('w-buffer')?.value || 0);
-          formData.parallel_tracks = Number(document.getElementById('w-tracks')?.value || 1);
           currentStep = 3;
-          render();
         }
+        render();
       };
     }
 
     const btnPrev = document.getElementById('btn-prev-step');
     if (btnPrev) {
       btnPrev.onclick = () => {
-        if (currentStep === 3) syncStep3Data();
+        syncFormState();
         currentStep = Math.max(1, currentStep - 1);
         render();
       };
     }
 
-    // Reminders Handlers with Step 3 Sync
+    // Reminders
     const btnAddReminder = document.getElementById('btn-add-reminder');
     if (btnAddReminder) {
       btnAddReminder.onclick = () => {
-        syncStep3Data();
+        syncFormState();
         if (formData.reminders.length >= 3) return;
         const defaultSchedules = ['24h', '2h', '30m'];
         const nextSchedule = defaultSchedules[formData.reminders.length] || '30m';
@@ -355,7 +314,7 @@ export async function renderWizard(container, { param: eventId }) {
 
     document.querySelectorAll('.btn-delete-reminder').forEach(btn => {
       btn.onclick = () => {
-        syncStep3Data();
+        syncFormState();
         const idx = Number(btn.dataset.index);
         formData.reminders.splice(idx, 1);
         formData.reminders.forEach((r, i) => { r.stage = i + 1; });
@@ -372,19 +331,19 @@ export async function renderWizard(container, { param: eventId }) {
       };
     });
 
-    // Custom Fields Handlers with Step 3 Sync
+    // Custom Fields
     const btnAddCf = document.getElementById('btn-add-cf');
     if (btnAddCf) {
       btnAddCf.onclick = () => {
-        syncStep3Data();
-        formData.custom_fields.push({ label: '', required: false });
+        syncFormState();
+        formData.custom_fields.push({ label: '', required: true, field_type: 'text' });
         render();
       };
     }
 
     document.querySelectorAll('.btn-remove-cf').forEach(btn => {
       btn.onclick = () => {
-        syncStep3Data();
+        syncFormState();
         const idx = Number(btn.dataset.index);
         formData.custom_fields.splice(idx, 1);
         render();
@@ -396,8 +355,7 @@ export async function renderWizard(container, { param: eventId }) {
       btnSave.onclick = async () => {
         btnSave.disabled = true;
         btnSave.innerText = 'Saving Event...';
-
-        syncStep3Data();
+        syncFormState();
 
         try {
           let savedEventId = eventId;
@@ -415,8 +373,9 @@ export async function renderWizard(container, { param: eventId }) {
             }
           }
 
-          const plainPasscode = formData.passcode_plain || null;
+          const plainPasscode = formData.passcode_plain ? formData.passcode_plain.trim() : null;
 
+          // Universal Payload: Self-contained
           const eventPayload = {
             organizer_id: user.id,
             name: formData.name,
@@ -432,6 +391,7 @@ export async function renderWizard(container, { param: eventId }) {
             reminder_count: formData.reminders.length,
             reminder_frequency: formData.reminders[0]?.schedule || '24h',
             reminders_config: formData.reminders,
+            custom_fields: formData.custom_fields,
             status: 'published'
           };
 
@@ -444,7 +404,7 @@ export async function renderWizard(container, { param: eventId }) {
             savedEventId = newEv.id;
           }
 
-          // Upsert event_dates
+          // Dates
           await supabase.from('event_dates').delete().eq('event_id', savedEventId);
           const { data: insertedDate, error: dateErr } = await supabase.from('event_dates').insert({
             event_id: savedEventId,
@@ -456,14 +416,14 @@ export async function renderWizard(container, { param: eventId }) {
 
           if (dateErr) throw dateErr;
 
-          // Upsert custom_fields
+          // Also populate event_custom_fields table for backward compatibility
           await supabase.from('event_custom_fields').delete().eq('event_id', savedEventId);
           if (formData.custom_fields.length > 0) {
             const cfInserts = formData.custom_fields.map((c, i) => ({
               event_id: savedEventId,
               label: c.label,
-              field_type: 'text',
-              required: c.required,
+              field_type: c.field_type || 'text',
+              required: !!c.required,
               sort_order: i
             }));
             await supabase.from('event_custom_fields').insert(cfInserts);
@@ -520,7 +480,7 @@ export async function renderWizard(container, { param: eventId }) {
             await supabase.from('timeslots').insert(slotsToInsert);
           }
 
-          toast('Event saved successfully with passcode protection!', 'success');
+          toast('Event saved successfully!', 'success');
           window.location.hash = '#/publish/' + savedEventId;
 
         } catch (err) {
