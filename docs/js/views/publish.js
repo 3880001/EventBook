@@ -1,6 +1,7 @@
 import { supabase } from '../supabaseClient.js';
 import { toast, generateQRCodeDataURI } from '../utils/ui.js';
 import { sendCancellationEmail, sendStatusUpdateEmail } from '../utils/emailService.js';
+import { formatEventTime, formatEventDate } from '../utils/eventEngine.js';
 
 export async function renderPublishPage(container, { param: eventId }) {
   container.innerHTML = '<div class="loader-center"><div class="spinner"></div></div>';
@@ -24,6 +25,7 @@ export async function renderPublishPage(container, { param: eventId }) {
 
   let bookingsList = bookingsData || [];
   const timeslotsList = event.timeslots || [];
+  const eventTimezone = event.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/Toronto';
   const isFullDay = (event.event_dates && event.event_dates.some(d => d.is_full_day)) || (event.slot_duration_minutes >= 480);
 
   const basePath = window.location.pathname.endsWith('/') 
@@ -59,7 +61,7 @@ export async function renderPublishPage(container, { param: eventId }) {
     let tableRowsHtml = '';
     if (filteredBookings.length === 0) {
       tableRowsHtml = '<tr><td colspan="6" style="text-align:center; padding:2.5rem 1rem; color:var(--text-muted);">'
-        + (searchTerm ? 'No attendees match your search query.' : 'No attendees have registered yet. Share the booking link above to receive bookings.')
+        + (searchTerm ? 'No attendees match your search query.' : 'No attendees registered yet. Share the booking link above to receive bookings.')
         + '</td></tr>';
     } else {
       for (let i = 0; i < filteredBookings.length; i++) {
@@ -69,11 +71,12 @@ export async function renderPublishPage(container, { param: eventId }) {
         let slotTimeStr = isFullDay ? 'Whole Day Session' : 'Scheduled Appointment';
         let slotObj = timeslotsList.find(s => s.id === b.timeslot_id);
         if (slotObj && slotObj.start_time) {
-          const startStr = new Date(slotObj.start_time).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+          const startStr = formatEventTime(slotObj.start_time, eventTimezone);
+          const dateStr = formatEventDate(slotObj.start_time, eventTimezone, { month: 'short', day: 'numeric' });
           const trackTag = slotObj.track_number ? (' • Track ' + slotObj.track_number) : '';
-          slotTimeStr = startStr + trackTag;
+          slotTimeStr = dateStr + ' at ' + startStr + trackTag;
         } else if (event.event_dates && event.event_dates[0]) {
-          slotTimeStr = new Date(event.event_dates[0].event_date + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) + ' (Whole Day)';
+          slotTimeStr = formatEventDate(event.event_dates[0].event_date + 'T12:00:00Z', eventTimezone) + ' (Whole Day)';
         }
 
         let customInfoHtml = '<span style="color:var(--text-muted);">-</span>';
@@ -112,7 +115,7 @@ export async function renderPublishPage(container, { param: eventId }) {
           + '<option value="no_show"' + (currentStatus === 'no_show' ? ' selected' : '') + '>No Show</option>'
           + '<option value="cancelled"' + (currentStatus === 'cancelled' ? ' selected' : '') + '>Cancelled</option>'
           + '</select>'
-          + '<button type="button" class="btn btn-sm btn-delete-booking" data-id="' + b.id + '" data-slot-id="' + (b.timeslot_id || '') + '" data-ref="' + b.booking_reference + '" title="Cancel & Delete booking" style="background:#fee2e2; color:#ef4444; border:1px solid #fca5a5; padding:0.25rem 0.5rem; border-radius:6px; cursor:pointer;">'
+          + '<button type="button" class="btn btn-sm btn-delete-booking" data-id="' + b.id + '" data-slot-id="' + (b.timeslot_id || '') + '" data-ref="' + b.booking_reference + '" title="Cancel booking" style="background:#fee2e2; color:#ef4444; border:1px solid #fca5a5; padding:0.25rem 0.5rem; border-radius:6px; cursor:pointer;">'
           + '🗑️'
           + '</button>'
           + '</div>'
@@ -121,7 +124,6 @@ export async function renderPublishPage(container, { param: eventId }) {
       }
     }
 
-    // Read plain passcode accurately from event record
     const realPasscode = (event.passcode_plain || event.passcode_hash || '').trim();
 
     container.innerHTML = '<div style="max-width:1100px; margin:0 auto; padding-bottom:3rem;">'
@@ -132,7 +134,11 @@ export async function renderPublishPage(container, { param: eventId }) {
       + event.name + ' '
       + '<span class="badge ' + (event.status === 'published' ? 'badge-success' : 'badge-neutral') + '">' + event.status + '</span>'
       + '</h1>'
-      + '<p style="color:var(--text-muted); font-size:0.9rem;">' + (event.location_details || 'Online') + ' &bull; ' + (isFullDay ? 'Whole Day Event' : (event.slot_duration_minutes + 'm slots')) + '</p>'
+      + '<p style="color:var(--text-muted); font-size:0.9rem;">' 
+      + (event.location_details || 'Online') + ' &bull; ' 
+      + (isFullDay ? 'Whole Day Event' : (event.slot_duration_minutes + 'm slots')) + ' &bull; '
+      + '<strong>🌐 ' + eventTimezone + '</strong>'
+      + '</p>'
       + '</div>'
       + '<div style="display:flex; gap:0.5rem; flex-wrap:wrap; align-items:center;">'
       + '<button id="btn-email-setup" class="btn btn-secondary btn-sm" style="display:inline-flex; align-items:center; gap:0.35rem;">⚙️ Email Setup</button>'
@@ -147,7 +153,7 @@ export async function renderPublishPage(container, { param: eventId }) {
       + '</div>'
       + '</div>'
 
-      // Public Access Card with Plain-Text Passcode Display
+      // Public Access Card
       + '<div class="card" style="background:#f8fafc; border:1px solid var(--border-color); padding:1.5rem; margin-bottom:1.5rem;">'
       + '<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1.25rem;">'
       + '<div style="flex:1; min-width:280px;">'
@@ -164,7 +170,6 @@ export async function renderPublishPage(container, { param: eventId }) {
       + (realPasscode 
           ? '<span id="text-passcode-val" style="font-family:monospace; font-weight:700; background:#e2e8f0; color:#0f172a; padding:4px 10px; border-radius:6px; letter-spacing:1px; font-size:1rem;">' + realPasscode + '</span>'
             + '<button type="button" id="btn-copy-passcode" class="btn btn-secondary btn-sm" style="display:inline-flex; align-items:center; gap:0.35rem; padding:0.3rem 0.75rem; font-size:0.8rem; font-weight:600;">'
-            + '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>'
             + 'Copy Passcode'
             + '</button>'
             + '<button type="button" id="btn-edit-passcode" class="btn btn-secondary btn-sm" style="font-size:0.8rem; padding:0.3rem 0.75rem;">✏️ Edit</button>'
@@ -204,7 +209,7 @@ export async function renderPublishPage(container, { param: eventId }) {
       + '</div>'
       + '</div>'
 
-      // Detailed Attendee Roster Table Card
+      // Detailed Attendee Roster Table
       + '<div class="card" style="margin-bottom:2rem;">'
       + '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.25rem; flex-wrap:wrap; gap:1rem;">'
       + '<div>'
@@ -235,124 +240,40 @@ export async function renderPublishPage(container, { param: eventId }) {
       + '</div>'
       + '</div>'
 
-      // Brevo Email Setup Modal
-      + '<div id="email-setup-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:9999; align-items:center; justify-content:center; padding:1rem;">'
-      + '<div class="card" style="max-width:500px; width:100%; padding:2rem; border-radius:12px; background:#fff;">'
-      + '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">'
-      + '<h3 style="margin:0; font-size:1.25rem;">⚙️ Brevo Email Service</h3>'
-      + '<button id="btn-close-modal" class="btn btn-secondary btn-sm" style="border:none; font-size:1.2rem; cursor:pointer;">✕</button>'
-      + '</div>'
-      + '<p style="color:var(--text-muted); font-size:0.85rem; margin-bottom:1.25rem;">Configure your free Brevo API key and sender address. All emails will dispatch reliably through your account.</p>'
-      + '<div class="form-group">'
-      + '<label class="form-label">Brevo API Key (xkeysib-...)</label>'
-      + '<input type="password" id="cfg-brevo-key" class="form-control" placeholder="xkeysib-..." />'
-      + '</div>'
-      + '<div class="form-group">'
-      + '<label class="form-label">Verified Brevo Sender Email</label>'
-      + '<input type="email" id="cfg-brevo-sender" class="form-control" placeholder="your-email@gmail.com" />'
-      + '</div>'
-      + '<div class="form-group">'
-      + '<label class="form-label">Sender Name</label>'
-      + '<input type="text" id="cfg-brevo-name" class="form-control" placeholder="EventBook" value="EventBook" />'
-      + '</div>'
-      + '<div style="display:flex; justify-content:space-between; margin-top:1.5rem; gap:0.5rem;">'
-      + '<button id="btn-test-email" class="btn btn-secondary btn-sm">Send Test Email</button>'
-      + '<button id="btn-save-email-cfg" class="btn btn-primary btn-sm">Save Brevo Settings</button>'
-      + '</div>'
-      + '</div>'
-      + '</div>'
-
       + '</div>';
 
     bindInteractions(realPasscode);
   }
 
-  // Universal clipboard helper with fallback
-  async function copyText(text) {
-    if (!text) return false;
-    let success = false;
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      try {
-        await navigator.clipboard.writeText(text);
-        success = true;
-      } catch (err) {
-        console.warn('Navigator clipboard failed, attempting fallback', err);
-      }
-    }
-    if (!success) {
-      try {
-        const area = document.createElement('textarea');
-        area.value = text;
-        area.style.position = 'fixed';
-        area.style.left = '-9999px';
-        area.style.top = '0';
-        document.body.appendChild(area);
-        area.focus();
-        area.select();
-        document.execCommand('copy');
-        document.body.removeChild(area);
-        success = true;
-      } catch (e) {
-        console.error('Fallback copy failed', e);
-      }
-    }
-    return success;
-  }
-
   function bindInteractions(currentPasscode) {
-    // Copy Booking Link
     const copyLinkBtn = document.getElementById('btn-copy-inline');
     if (copyLinkBtn) {
-      copyLinkBtn.onclick = async () => {
-        const ok = await copyText(publicBookingURL);
-        if (ok) toast('Booking link copied to clipboard!', 'success');
+      copyLinkBtn.onclick = () => {
+        navigator.clipboard.writeText(publicBookingURL);
+        toast('Booking link copied to clipboard!', 'success');
       };
     }
 
-    // Copy Passcode
     const copyPassBtn = document.getElementById('btn-copy-passcode');
     if (copyPassBtn) {
-      copyPassBtn.onclick = async () => {
-        if (!currentPasscode) {
-          toast('No passcode to copy.', 'warning');
-          return;
-        }
-        const ok = await copyText(currentPasscode);
-        if (ok) {
-          toast('Passcode "' + currentPasscode + '" copied to clipboard!', 'success');
-        } else {
-          toast('Failed to copy passcode.', 'danger');
-        }
+      copyPassBtn.onclick = () => {
+        if (!currentPasscode) return;
+        navigator.clipboard.writeText(currentPasscode);
+        toast('Passcode "' + currentPasscode + '" copied!', 'success');
       };
     }
 
-    // Change or Set Passcode Button
     const editPassBtn = document.getElementById('btn-edit-passcode');
     if (editPassBtn) {
       editPassBtn.onclick = async () => {
-        const promptMsg = currentPasscode 
-          ? 'Enter new passcode (or leave blank to remove passcode):' 
-          : 'Enter new passcode for this event:';
-        const entered = prompt(promptMsg, currentPasscode);
+        const entered = prompt('Enter new passcode (or leave blank to remove):', currentPasscode);
         if (entered === null) return;
-
-        const cleanVal = entered.trim();
-        const nextPlain = cleanVal.length > 0 ? cleanVal : null;
-        const nextHash = cleanVal.length > 0 ? cleanVal : '';
-
-        const { error: passErr } = await supabase
-          .from('events')
-          .update({ passcode_plain: nextPlain, passcode_hash: nextHash })
-          .eq('id', event.id);
-
-        if (passErr) {
-          toast('Failed to update passcode: ' + passErr.message, 'danger');
-        } else {
-          event.passcode_plain = nextPlain;
-          event.passcode_hash = nextHash;
-          toast(nextPlain ? ('Passcode updated to "' + nextPlain + '"') : 'Passcode removed (Public access)', 'success');
-          renderView();
-        }
+        const val = entered.trim();
+        await supabase.from('events').update({ passcode_plain: val || null, passcode_hash: val || '' }).eq('id', event.id);
+        event.passcode_plain = val || null;
+        event.passcode_hash = val || '';
+        toast('Passcode updated!', 'success');
+        renderView();
       };
     }
 
@@ -361,110 +282,8 @@ export async function renderPublishPage(container, { param: eventId }) {
       toggleStatusBtn.onclick = async () => {
         const nextStatus = event.status === 'published' ? 'draft' : 'published';
         await supabase.from('events').update({ status: nextStatus }).eq('id', event.id);
-        toast('Event status changed to ' + nextStatus, 'info');
+        toast('Status updated to ' + nextStatus, 'info');
         renderPublishPage(container, { param: eventId });
-      };
-    }
-
-    // Email Modal Handlers
-    const emailModal = document.getElementById('email-setup-modal');
-    const openEmailBtn = document.getElementById('btn-email-setup');
-    const closeEmailBtn = document.getElementById('btn-close-modal');
-
-    if (openEmailBtn) {
-      openEmailBtn.onclick = async () => {
-        const { data: sData } = await supabase.from('app_settings').select('*');
-        if (sData) {
-          const keyRow = sData.find(r => r.key === 'brevo_api_key');
-          const emailRow = sData.find(r => r.key === 'brevo_sender_email');
-          const nameRow = sData.find(r => r.key === 'brevo_sender_name');
-          if (keyRow) document.getElementById('cfg-brevo-key').value = keyRow.value;
-          if (emailRow) document.getElementById('cfg-brevo-sender').value = emailRow.value;
-          if (nameRow) document.getElementById('cfg-brevo-name').value = nameRow.value;
-        }
-        emailModal.style.display = 'flex';
-      };
-    }
-
-    if (closeEmailBtn) closeEmailBtn.onclick = () => { emailModal.style.display = 'none'; };
-
-    const saveEmailBtn = document.getElementById('btn-save-email-cfg');
-    if (saveEmailBtn) {
-      saveEmailBtn.onclick = async () => {
-        const apiKey = document.getElementById('cfg-brevo-key').value.trim();
-        const senderEmail = document.getElementById('cfg-brevo-sender').value.trim();
-        const senderName = document.getElementById('cfg-brevo-name').value.trim() || 'EventBook';
-
-        if (!apiKey || !senderEmail) return alert('Please enter both your Brevo API key and sender email.');
-
-        saveEmailBtn.disabled = true;
-        const { error } = await supabase.rpc('save_brevo_settings', {
-          p_api_key: apiKey,
-          p_sender_email: senderEmail,
-          p_sender_name: senderName
-        });
-
-        saveEmailBtn.disabled = false;
-        if (error) {
-          toast('Error saving settings: ' + error.message, 'danger');
-        } else {
-          toast('Brevo credentials saved successfully!', 'success');
-          emailModal.style.display = 'none';
-        }
-      };
-    }
-
-    const testEmailBtn = document.getElementById('btn-test-email');
-    if (testEmailBtn) {
-      testEmailBtn.onclick = async () => {
-        const targetEmail = prompt('Enter recipient email for the test message:');
-        if (!targetEmail) return;
-
-        testEmailBtn.innerText = 'Dispatching...';
-        testEmailBtn.disabled = true;
-
-        const { data, error } = await supabase.rpc('send_brevo_email', {
-          p_recipient_email: targetEmail,
-          p_recipient_name: 'Tester',
-          p_subject: 'EventBook Brevo Connection Test',
-          p_html_content: '<h2>🎉 Brevo Connection Successful!</h2><p>Your EventBook application can now deliver emails to participant inboxes.</p>'
-        });
-
-        testEmailBtn.innerText = 'Send Test Email';
-        testEmailBtn.disabled = false;
-
-        if (error || (data && data.success === false)) {
-          alert('Test failed: ' + (error?.message || data?.error));
-        } else {
-          alert('✓ Test email dispatched via Brevo! Please check ' + targetEmail);
-        }
-      };
-    }
-
-    // Export CSV
-    const exportCsvBtn = document.getElementById('btn-export-csv');
-    if (exportCsvBtn) {
-      exportCsvBtn.onclick = () => {
-        if (bookingsList.length === 0) return alert('No booking records to export.');
-        const headers = ['Booking Reference', 'Participant Name', 'Email', 'Phone', 'Status', 'Attendance Confirmed', 'Custom Details', 'Booked At'];
-        const rows = bookingsList.map(b => [
-          b.booking_reference,
-          '"' + (b.participant_profiles?.full_name || '') + '"',
-          b.participant_profiles?.email || '',
-          b.participant_profiles?.phone || '',
-          b.status,
-          b.attendance_confirmed ? 'YES' : 'NO',
-          '"' + JSON.stringify(b.custom_responses || {}).replace(/"/g, '""') + '"',
-          b.created_at
-        ]);
-        const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
-        const encodedUri = encodeURI(csvContent);
-        const link = document.createElement('a');
-        link.setAttribute('href', encodedUri);
-        link.setAttribute('download', event.slug + '-attendees.csv');
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
       };
     }
 
@@ -489,21 +308,8 @@ export async function renderPublishPage(container, { param: eventId }) {
         const isAttended = (newStatus === 'attended');
 
         sel.disabled = true;
-        const { error: updErr } = await supabase
-          .from('bookings')
-          .update({
-            status: newStatus,
-            attendance_confirmed: isAttended,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', bookingId);
-
-        if (updErr) {
-          toast('Failed to update status: ' + updErr.message, 'danger');
-          sel.disabled = false;
-          return;
-        }
-
+        await supabase.from('bookings').update({ status: newStatus, attendance_confirmed: isAttended, updated_at: new Date().toISOString() }).eq('id', bookingId);
+        
         if (newStatus === 'cancelled' && slotId) {
           await supabase.from('timeslots').update({ status: 'available' }).eq('id', slotId);
         } else if (newStatus !== 'cancelled' && slotId) {
@@ -511,22 +317,13 @@ export async function renderPublishPage(container, { param: eventId }) {
         }
 
         const bItem = bookingsList.find(b => b.id === bookingId);
-        const participantObj = bItem?.participant_profiles;
-        if (participantObj) {
-          if (newStatus === 'cancelled') {
-            sendCancellationEmail(bItem, event, participantObj);
-          } else {
-            sendStatusUpdateEmail(bItem, event, participantObj, newStatus);
-          }
+        if (bItem?.participant_profiles) {
+          if (newStatus === 'cancelled') sendCancellationEmail(bItem, event, bItem.participant_profiles);
+          else sendStatusUpdateEmail(bItem, event, bItem.participant_profiles, newStatus);
         }
 
-        if (bItem) {
-          bItem.status = newStatus;
-          bItem.attendance_confirmed = isAttended;
-        }
-
-        toast('Status updated to ' + newStatus + ' & email dispatched!', 'success');
-        renderView();
+        toast('Status updated to ' + newStatus, 'success');
+        renderPublishPage(container, { param: eventId });
       };
     });
 
@@ -536,35 +333,17 @@ export async function renderPublishPage(container, { param: eventId }) {
         const slotId = btn.dataset.slotId;
         const ref = btn.dataset.ref;
 
-        if (!confirm('Are you sure you want to cancel and delete booking ' + ref + '? A cancellation email will be sent to the participant.')) {
-          return;
-        }
-
+        if (!confirm('Cancel and delete booking ' + ref + '?')) return;
         btn.disabled = true;
 
         const bItem = bookingsList.find(b => b.id === bookingId);
-        if (bItem?.participant_profiles) {
-          sendCancellationEmail(bItem, event, bItem.participant_profiles);
-        }
+        if (bItem?.participant_profiles) sendCancellationEmail(bItem, event, bItem.participant_profiles);
 
-        const { error: delErr } = await supabase
-          .from('bookings')
-          .delete()
-          .eq('id', bookingId);
+        await supabase.from('bookings').delete().eq('id', bookingId);
+        if (slotId) await supabase.from('timeslots').update({ status: 'available' }).eq('id', slotId);
 
-        if (delErr) {
-          toast('Delete failed: ' + delErr.message, 'danger');
-          btn.disabled = false;
-          return;
-        }
-
-        if (slotId) {
-          await supabase.from('timeslots').update({ status: 'available' }).eq('id', slotId);
-        }
-
-        bookingsList = bookingsList.filter(b => b.id !== bookingId);
-        toast('Booking ' + ref + ' cancelled and deleted.', 'info');
-        renderView();
+        toast('Booking deleted.', 'info');
+        renderPublishPage(container, { param: eventId });
       };
     });
   }
