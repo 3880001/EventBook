@@ -34,7 +34,7 @@ export async function renderBookingPage(container, { param: slug, query }) {
     return;
   }
 
-  // Universal Past Check
+  // 1. Past Event Check
   if (isEventPast(event)) {
     container.innerHTML = '<div style="max-width:550px; margin:4rem auto; padding:0 1rem;">'
       + '<div class="card" style="text-align:center; padding:3rem 1.5rem; border-radius:16px;">'
@@ -44,7 +44,7 @@ export async function renderBookingPage(container, { param: slug, query }) {
       + 'Event Concluded'
       + '</div>'
       + '<p style="color:var(--text-muted); font-size:0.95rem; line-height:1.5;">'
-      + 'This event has concluded and registrations are now closed.'
+      + 'This event has concluded and bookings are closed.'
       + '</p>'
       + '<div style="margin-top:2rem;">'
       + '<a href="#/events" class="btn btn-secondary btn-sm" style="text-decoration:none;">View My Events</a>'
@@ -54,7 +54,7 @@ export async function renderBookingPage(container, { param: slug, query }) {
     return;
   }
 
-  // Universal Passcode Gate
+  // 2. Passcode Gate
   const passcode = getEventPasscode(event);
   const requiresPasscode = hasEventPasscode(event);
   const passcodeStorageKey = 'passcode_unlocked_' + event.id;
@@ -84,7 +84,7 @@ function renderPasscodeGate(container, event, expectedPasscode, onUnlock) {
     + '</div>'
     + '<h1 style="font-size:1.45rem; font-weight:700; margin:0 0 0.5rem 0;">Private Event</h1>'
     + '<p style="color:var(--text-muted); font-size:0.9rem; margin-bottom:1.75rem; line-height:1.5;">'
-    + 'This event is protected by the organizer. Please enter the passcode to access event details and reserve a timeslot.'
+    + 'This event is protected by the organizer. Please enter the passcode to access registration.'
     + '</p>'
     + '<form id="passcode-form">'
     + '<div class="form-group" style="text-align:left;">'
@@ -119,6 +119,8 @@ function renderPasscodeGate(container, event, expectedPasscode, onUnlock) {
 }
 
 async function renderBookingWorkspace(container, event, hasPasscode) {
+  let isParticipantVerified = false;
+  let participantData = { fullName: '', email: '', phone: '', customResponses: {} };
   let selectedSlot = null;
   let activeDateId = event.event_dates && event.event_dates[0] ? event.event_dates[0].id : null;
   let activeTrack = 'all';
@@ -140,6 +142,97 @@ async function renderBookingWorkspace(container, event, hasPasscode) {
   const customFields = getCustomFields(event);
 
   function render() {
+    const activeDateObj = (event.event_dates && event.event_dates.find(d => d.id === activeDateId)) || (event.event_dates && event.event_dates[0]);
+
+    const passcodeStatusBadge = hasPasscode
+      ? '<div style="display:inline-flex; align-items:center; gap:0.4rem; background:#ecfdf5; color:#065f46; padding:4px 10px; border-radius:6px; font-size:0.8rem; font-weight:600;">'
+        + '<span>🔒 Passcode Unlocked</span>'
+        + '<button type="button" id="btn-relock-event" style="background:none; border:none; color:#047857; text-decoration:underline; font-size:0.8rem; cursor:pointer; font-weight:600; padding:0 2px;" title="Relock this event">[Lock 🔒]</button>'
+        + '</div>'
+      : '';
+
+    const durationLabel = isFullDayEvent ? 'Whole Day Event' : (event.slot_duration_minutes + ' Mins Duration');
+
+    // ==========================================
+    // STAGE 1: PARTICIPANT INFO & ID GATE (LOCKED)
+    // ==========================================
+    if (!isParticipantVerified) {
+      let customFieldsInputsHtml = '';
+      if (customFields.length > 0) {
+        customFieldsInputsHtml = '<div style="margin-top:1.25rem; padding-top:1.25rem; border-top:1px dashed var(--border-color);">'
+          + '<h3 style="font-size:1rem; font-weight:700; color:var(--text-primary); margin-bottom:0.75rem;">Required Event Questions</h3>';
+
+        for (let i = 0; i < customFields.length; i++) {
+          const cf = customFields[i];
+          const isReq = cf.required;
+          const reqBadge = isReq 
+            ? ' <span style="color:#ef4444; font-weight:700; font-size:0.85rem;">* (Required)</span>' 
+            : ' <span style="color:var(--text-muted); font-size:0.8rem;">(Optional)</span>';
+
+          const existingVal = participantData.customResponses[cf.label] || '';
+
+          customFieldsInputsHtml += '<div class="form-group" style="margin-bottom:1rem;">'
+            + '<label class="form-label" style="font-weight:700; font-size:0.95rem;">' + cf.label + reqBadge + '</label>'
+            + '<input type="' + (cf.field_type || 'text') + '" class="form-control gate-custom-field" data-label="' + cf.label.replace(/"/g, '&quot;') + '" data-required="' + (isReq ? 'true' : 'false') + '" value="' + existingVal.replace(/"/g, '&quot;') + '" placeholder="Enter your ' + cf.label.replace(/"/g, '&quot;') + ' (e.g. 557657)" style="background:#fff; border:1px solid #cbd5e1; padding:0.65rem; font-size:0.95rem;" />'
+            + '</div>';
+        }
+        customFieldsInputsHtml += '</div>';
+      }
+
+      container.innerHTML = '<div style="max-width:700px; margin:0 auto; padding:1rem 0;">'
+        + '<div class="card" style="margin-bottom:1.5rem;">'
+        + '<div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:0.75rem;">'
+        + '<h1 style="font-size:1.75rem; font-weight:700; margin:0;">' + event.name + '</h1>'
+        + passcodeStatusBadge
+        + '</div>'
+        + '<p style="color:var(--text-muted); margin-top:0.5rem; line-height:1.5;">' + (event.description || 'Welcome! Please fill in your attendee details below to view and select available appointment timeslots.') + '</p>'
+        + '<div style="display:flex; gap:1.25rem; margin-top:1rem; flex-wrap:wrap; font-size:0.875rem; color:var(--text-muted);">'
+        + '<div style="display:flex; align-items:center; gap:0.35rem;">' + formatLocationHtml(event.location_details, 'Online') + '</div>'
+        + '<div style="display:flex; align-items:center; gap:0.35rem;"><span>⏱️</span> ' + durationLabel + '</div>'
+        + '</div>'
+        + '</div>'
+
+        + '<div class="card" style="box-shadow:0 10px 25px rgba(0,0,0,0.05); border-radius:14px;">'
+        + '<div style="display:flex; align-items:center; gap:0.75rem; margin-bottom:1.25rem;">'
+        + '<div style="width:36px; height:36px; border-radius:50%; background:var(--primary); color:#fff; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:1rem;">1</div>'
+        + '<div>'
+        + '<h2 style="font-size:1.25rem; font-weight:700; margin:0;">Participant Information & ID</h2>'
+        + '<p style="color:var(--text-muted); font-size:0.825rem; margin-top:2px;">Enter your required details to unlock appointment timeslots.</p>'
+        + '</div>'
+        + '</div>'
+
+        + '<form id="form-participant-gate" novalidate>'
+        + '<div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">'
+        + '<div class="form-group">'
+        + '<label class="form-label" style="font-weight:600;">Full Name <span style="color:#ef4444;">*</span></label>'
+        + '<input type="text" id="p-fullname" class="form-control" placeholder="John Doe" value="' + participantData.fullName + '" required style="background:#fff;" />'
+        + '</div>'
+        + '<div class="form-group">'
+        + '<label class="form-label" style="font-weight:600;">Email Address <span style="color:#ef4444;">*</span></label>'
+        + '<input type="email" id="p-email" class="form-control" placeholder="john@example.com" value="' + participantData.email + '" required style="background:#fff;" />'
+        + '</div>'
+        + '</div>'
+        + '<div class="form-group">'
+        + '<label class="form-label">Phone Number <span style="color:var(--text-muted); font-size:0.8rem;">(Optional)</span></label>'
+        + '<input type="tel" id="p-phone" class="form-control" placeholder="+1 555-0199" value="' + participantData.phone + '" style="background:#fff;" />'
+        + '</div>'
+        + customFieldsInputsHtml
+        + '<div style="margin-top:1.75rem; display:flex; justify-content:flex-end;">'
+        + '<button type="submit" id="btn-proceed-to-slots" class="btn btn-primary" style="padding:0.85rem 2rem; font-size:1rem; font-weight:700;">'
+        + 'Continue to Available Slots &rarr;'
+        + '</button>'
+        + '</div>'
+        + '</form>'
+        + '</div>'
+        + '</div>';
+
+      bindGateEvents();
+      return;
+    }
+
+    // ==========================================
+    // STAGE 2: SLOTS SELECTION & CONFIRMATION
+    // ==========================================
     const currentSlots = timeslots.filter(s => {
       const matchDate = (!activeDateId || !s.event_date_id || event.event_dates?.length <= 1) ? true : (s.event_date_id === activeDateId);
       const matchTrack = (activeTrack === 'all') ? true : (s.track_number === Number(activeTrack));
@@ -150,8 +243,6 @@ async function renderBookingWorkspace(container, event, hasPasscode) {
       const diff = new Date(a.start_time) - new Date(b.start_time);
       return diff !== 0 ? diff : (a.track_number - b.track_number);
     });
-
-    const activeDateObj = (event.event_dates && event.event_dates.find(d => d.id === activeDateId)) || (event.event_dates && event.event_dates[0]);
 
     // Date Tabs
     let datesTabsHtml = '';
@@ -187,7 +278,7 @@ async function renderBookingWorkspace(container, event, hasPasscode) {
       const dateLabel = activeDateObj 
         ? new Date(activeDateObj.event_date + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
         : 'Whole Day Pass';
-      const startTimeLabel = activeDateObj && activeDateObj.start_time ? activeDateObj.start_time.slice(0, 5) : '09:00';
+      const startTimeLabel = activeDateObj && activeDateObj.start_time ? activeDateObj.start_time.slice(0, 5) : '12:00';
       const endTimeLabel = activeDateObj && activeDateObj.end_time ? activeDateObj.end_time.slice(0, 5) : '17:00';
 
       slotsDisplayHtml = '<div style="background:#f8fafc; border:2px dashed var(--border-color); border-radius:12px; padding:1.25rem; margin-top:0.5rem;">'
@@ -195,7 +286,7 @@ async function renderBookingWorkspace(container, event, hasPasscode) {
         + '<div>'
         + '<div style="display:inline-block; background:#e0e7ff; color:#3730a3; font-weight:700; font-size:0.75rem; padding:2px 8px; border-radius:4px; text-transform:uppercase; margin-bottom:0.4rem;">Full Day Session</div>'
         + '<h3 style="font-size:1.15rem; font-weight:700; margin:0;">' + dateLabel + '</h3>'
-        + '<p style="color:var(--text-muted); font-size:0.875rem; margin-top:0.25rem;">Open session attendance from ' + startTimeLabel + ' to ' + endTimeLabel + '.</p>'
+        + '<p style="color:var(--text-muted); font-size:0.875rem; margin-top:0.25rem;">Open session from ' + startTimeLabel + ' to ' + endTimeLabel + '.</p>'
         + '</div>'
         + '<div>' + (isBooked ? '<span class="badge badge-warning">Fully Booked</span>' : '<button type="button" id="btn-select-fullday" class="btn ' + buttonClass + '" style="padding:0.65rem 1.25rem; font-weight:600;">' + buttonText + '</button>') + '</div>'
         + '</div></div>';
@@ -222,35 +313,17 @@ async function renderBookingWorkspace(container, event, hasPasscode) {
       slotsDisplayHtml = '<div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap:0.65rem; margin-top:0.5rem;">' + slotButtons + '</div>';
     }
 
-    // Dynamic Custom Questions HTML (Prominently rendered)
-    let customFieldsHtml = '';
-    if (customFields.length > 0) {
-      customFieldsHtml = '<div style="margin-top:1.25rem; padding-top:1.25rem; border-top:1px dashed var(--border-color);">'
-        + '<h3 style="font-size:1rem; font-weight:700; color:var(--text-primary); margin-bottom:0.85rem;">📋 Required Registration Questions</h3>';
-
-      for (let i = 0; i < customFields.length; i++) {
-        const cf = customFields[i];
-        const isReq = cf.required;
-        const reqBadge = isReq 
-          ? ' <span style="color:#ef4444; font-weight:700; font-size:0.85rem;">* (Required)</span>' 
-          : ' <span style="color:var(--text-muted); font-size:0.8rem;">(Optional)</span>';
-
-        customFieldsHtml += '<div class="form-group" style="margin-bottom:1rem;">'
-          + '<label class="form-label" style="font-weight:700; font-size:0.95rem;">' + cf.label + reqBadge + '</label>'
-          + '<input type="' + (cf.field_type || 'text') + '" class="form-control custom-field-input" data-label="' + cf.label.replace(/"/g, '&quot;') + '" data-required="' + (isReq ? 'true' : 'false') + '" placeholder="Please provide your ' + cf.label.replace(/"/g, '&quot;') + '" style="background:#fff; border:1px solid #cbd5e1; padding:0.65rem; font-size:0.95rem;" />'
-          + '</div>';
-      }
-      customFieldsHtml += '</div>';
-    }
-
-    const durationLabel = isFullDayEvent ? 'Whole Day Event' : (event.slot_duration_minutes + ' Mins Duration');
-    
-    const passcodeStatusBadge = hasPasscode
-      ? '<div style="display:inline-flex; align-items:center; gap:0.4rem; background:#ecfdf5; color:#065f46; padding:4px 10px; border-radius:6px; font-size:0.8rem; font-weight:600;">'
-        + '<span>🔒 Passcode Unlocked</span>'
-        + '<button type="button" id="btn-relock-event" style="background:none; border:none; color:#047857; text-decoration:underline; font-size:0.8rem; cursor:pointer; font-weight:600; padding:0 2px;" title="Relock this event">[Lock 🔒]</button>'
-        + '</div>'
-      : '';
+    // Verified Attendee Badge Header
+    let customSummary = Object.entries(participantData.customResponses).map(([k, v]) => k + ': ' + v).join(' • ');
+    let verifiedBanner = '<div style="background:#ecfdf5; border:1px solid #a7f3d0; border-radius:10px; padding:12px 16px; margin-bottom:1.5rem; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.75rem;">'
+      + '<div>'
+      + '<span style="color:#059669; font-weight:800; font-size:0.85rem; text-transform:uppercase;">✓ Verified Attendee: </span>'
+      + '<strong style="color:#065f46; font-size:0.95rem;">' + participantData.fullName + '</strong>'
+      + '<span style="color:#047857; font-size:0.85rem; margin-left:8px;">(' + participantData.email + ')</span>'
+      + (customSummary ? '<div style="font-size:0.85rem; color:#065f46; font-weight:700; margin-top:2px;">' + customSummary + '</div>' : '')
+      + '</div>'
+      + '<button type="button" id="btn-edit-attendee-info" class="btn btn-secondary btn-sm" style="font-size:0.8rem; padding:0.3rem 0.75rem;">✏️ Edit Details</button>'
+      + '</div>';
 
     let slotNoticeHtml = '';
     if (selectedSlot) {
@@ -259,49 +332,27 @@ async function renderBookingWorkspace(container, event, hasPasscode) {
         selectedTimeLabel = new Date(selectedSlot.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
           + ' - ' + new Date(selectedSlot.end_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       }
-      slotNoticeHtml = '<div style="background:#eff6ff; border:1px solid #bfdbfe; color:#1e40af; padding:10px 14px; border-radius:8px; font-size:0.9rem; font-weight:600; margin-bottom:1.25rem;">'
-        + '✓ Selected Appointment: <strong>' + selectedTimeLabel + '</strong>'
+      slotNoticeHtml = '<div style="background:#eff6ff; border:1px solid #bfdbfe; color:#1e40af; padding:10px 14px; border-radius:8px; font-size:0.9rem; font-weight:700; margin-bottom:1.25rem;">'
+        + '✓ Selected Appointment: ' + selectedTimeLabel
         + '</div>';
     }
 
     container.innerHTML = '<div style="max-width:850px; margin:0 auto; padding:1rem 0;">'
-      // Card 1: Event Summary
       + '<div class="card" style="margin-bottom:1.5rem;">'
       + '<div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:0.75rem;">'
       + '<h1 style="font-size:1.75rem; font-weight:700; margin:0;">' + event.name + '</h1>'
       + passcodeStatusBadge
       + '</div>'
-      + '<p style="color:var(--text-muted); margin-top:0.5rem; line-height:1.5;">' + (event.description || 'Complete the registration form and choose your timeslot below.') + '</p>'
+      + '<p style="color:var(--text-muted); margin-top:0.5rem; line-height:1.5;">' + (event.description || 'Select your timeslot to confirm booking.') + '</p>'
       + '<div style="display:flex; gap:1.25rem; margin-top:1rem; flex-wrap:wrap; font-size:0.875rem; color:var(--text-muted);">'
       + '<div style="display:flex; align-items:center; gap:0.35rem;">' + formatLocationHtml(event.location_details, 'Online') + '</div>'
       + '<div style="display:flex; align-items:center; gap:0.35rem;"><span>⏱️</span> ' + durationLabel + '</div>'
       + '</div>'
       + '</div>'
 
-      // Card 2: Step 1 - Participant Details & Questions (Prominently First)
-      + '<div class="card" id="booking-form-card" style="margin-bottom:1.5rem;">'
-      + '<h2 style="font-size:1.25rem; font-weight:700; margin-bottom:0.5rem;">1. Participant Information</h2>'
-      + '<p style="color:var(--text-muted); font-size:0.85rem; margin-bottom:1.25rem;">Please provide your attendee contact details and answer any required questions.</p>'
-      + '<form id="booking-submit-form" novalidate>'
-      + '<div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">'
-      + '<div class="form-group">'
-      + '<label class="form-label" style="font-weight:600;">Full Name <span style="color:#ef4444;">*</span></label>'
-      + '<input type="text" id="p-fullname" class="form-control" placeholder="John Doe" required style="background:#fff;" />'
-      + '</div>'
-      + '<div class="form-group">'
-      + '<label class="form-label" style="font-weight:600;">Email Address <span style="color:#ef4444;">*</span></label>'
-      + '<input type="email" id="p-email" class="form-control" placeholder="john@example.com" required style="background:#fff;" />'
-      + '</div>'
-      + '</div>'
-      + '<div class="form-group">'
-      + '<label class="form-label">Phone Number <span style="color:var(--text-muted); font-size:0.8rem;">(Optional)</span></label>'
-      + '<input type="tel" id="p-phone" class="form-control" placeholder="+1 555-0199" style="background:#fff;" />'
-      + '</div>'
-      + customFieldsHtml
-      + '</div>'
+      + verifiedBanner
 
-      // Card 3: Step 2 - Choose Appointment Slot
-      + '<div class="card" id="slots-card" style="margin-bottom:2rem;">'
+      + '<div class="card" style="margin-bottom:2rem;">'
       + '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem; flex-wrap:wrap; gap:0.5rem;">'
       + '<h2 style="font-size:1.25rem; font-weight:700; margin:0;">2. Select Appointment Timeslot</h2>'
       + '<span style="font-size:0.85rem; color:var(--text-muted); font-weight:600;">' + currentSlots.length + ' Slots Available</span>'
@@ -311,25 +362,98 @@ async function renderBookingWorkspace(container, event, hasPasscode) {
       + tracksTabsHtml
       + slotsDisplayHtml
       + '<div style="margin-top:2rem; padding-top:1.25rem; border-top:1px solid var(--border-color); display:flex; justify-content:flex-end;">'
-      + '<button type="submit" id="btn-submit-booking" class="btn btn-primary" style="padding:0.85rem 2.25rem; font-size:1rem; font-weight:700;">'
-      + (selectedSlot ? 'Confirm Booking &rarr;' : 'Select a Slot & Confirm')
+      + '<button type="button" id="btn-final-confirm-booking" class="btn btn-primary" style="padding:0.85rem 2.25rem; font-size:1rem; font-weight:700;">'
+      + (selectedSlot ? 'Confirm Booking &rarr;' : 'Select a Slot to Confirm')
       + '</button>'
       + '</div>'
-      + '</form>'
       + '</div>'
 
       + '</div>';
 
-    bindActions(currentSlots, activeDateObj);
+    bindSlotSelectionEvents(currentSlots, activeDateObj);
   }
 
-  function bindActions(currentSlots, activeDateObj) {
+  function bindGateEvents() {
     const relockBtn = document.getElementById('btn-relock-event');
     if (relockBtn) {
       relockBtn.onclick = () => {
         sessionStorage.removeItem('passcode_unlocked_' + event.id);
         toast('Event locked.', 'info');
         renderBookingPage(container, { param: event.slug, query: new URLSearchParams() });
+      };
+    }
+
+    const gateForm = document.getElementById('form-participant-gate');
+    if (gateForm) {
+      gateForm.onsubmit = (e) => {
+        e.preventDefault();
+
+        const nameEl = document.getElementById('p-fullname');
+        const emailEl = document.getElementById('p-email');
+        const phoneEl = document.getElementById('p-phone');
+
+        const fullName = nameEl?.value.trim() || '';
+        const email = emailEl?.value.trim() || '';
+        const phone = phoneEl?.value.trim() || '';
+
+        if (!fullName) {
+          toast('Please enter your full name.', 'danger');
+          if (nameEl) { nameEl.style.border = '2px solid #ef4444'; nameEl.focus(); }
+          return;
+        }
+        if (nameEl) nameEl.style.border = '';
+
+        if (!email || !email.includes('@')) {
+          toast('Please enter a valid email address.', 'danger');
+          if (emailEl) { emailEl.style.border = '2px solid #ef4444'; emailEl.focus(); }
+          return;
+        }
+        if (emailEl) emailEl.style.border = '';
+
+        // Validate custom questions (e.g. ID)
+        const customInputs = document.querySelectorAll('.gate-custom-field');
+        const responses = {};
+
+        for (let i = 0; i < customInputs.length; i++) {
+          const inp = customInputs[i];
+          const isReq = (inp.dataset.required === 'true');
+          const label = inp.dataset.label || 'Question';
+          const val = inp.value.trim();
+
+          if (isReq && !val) {
+            toast('You must provide your ' + label + ' to continue.', 'danger');
+            inp.style.border = '2px solid #ef4444';
+            inp.focus();
+            return;
+          }
+
+          inp.style.border = '';
+          if (val) responses[label] = val;
+        }
+
+        // Passed validation: Unlock Timeslots
+        participantData = { fullName, email, phone, customResponses: responses };
+        isParticipantVerified = true;
+        toast('Details verified! Please choose your timeslot.', 'success');
+        render();
+      };
+    }
+  }
+
+  function bindSlotSelectionEvents(currentSlots, activeDateObj) {
+    const relockBtn = document.getElementById('btn-relock-event');
+    if (relockBtn) {
+      relockBtn.onclick = () => {
+        sessionStorage.removeItem('passcode_unlocked_' + event.id);
+        renderBookingPage(container, { param: event.slug, query: new URLSearchParams() });
+      };
+    }
+
+    const editInfoBtn = document.getElementById('btn-edit-attendee-info');
+    if (editInfoBtn) {
+      editInfoBtn.onclick = () => {
+        isParticipantVerified = false;
+        render();
       };
     }
 
@@ -355,7 +479,7 @@ async function renderBookingWorkspace(container, event, hasPasscode) {
         selectedSlot = currentSlots[0] || {
           id: null,
           event_id: event.id,
-          start_time: (activeDateObj && activeDateObj.event_date ? activeDateObj.event_date : new Date().toISOString().split('T')[0]) + 'T09:00:00'
+          start_time: (activeDateObj && activeDateObj.event_date ? activeDateObj.event_date : new Date().toISOString().split('T')[0]) + 'T12:00:00'
         };
         render();
       };
@@ -369,87 +493,25 @@ async function renderBookingWorkspace(container, event, hasPasscode) {
       };
     });
 
-    const form = document.getElementById('booking-submit-form');
-    if (form) {
-      form.onsubmit = async (e) => {
-        e.preventDefault();
-        const submitBtn = document.getElementById('btn-submit-booking');
-
-        const nameEl = document.getElementById('p-fullname');
-        const emailEl = document.getElementById('p-email');
-        const phoneEl = document.getElementById('p-phone');
-
-        const fullName = nameEl?.value.trim() || '';
-        const email = emailEl?.value.trim() || '';
-        const phone = phoneEl?.value.trim() || '';
-
-        // 1. Validate Base Fields
-        if (!fullName) {
-          toast('Please enter your full name.', 'danger');
-          if (nameEl) {
-            nameEl.style.border = '2px solid #ef4444';
-            nameEl.focus();
-            nameEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          }
-          return;
-        }
-        if (nameEl) nameEl.style.border = '';
-
-        if (!email || !email.includes('@')) {
-          toast('Please enter a valid email address.', 'danger');
-          if (emailEl) {
-            emailEl.style.border = '2px solid #ef4444';
-            emailEl.focus();
-            emailEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          }
-          return;
-        }
-        if (emailEl) emailEl.style.border = '';
-
-        // 2. Strict Custom Questions Validation (e.g. "ID")
-        const customInputs = document.querySelectorAll('.custom-field-input');
-        const customResponses = {};
-
-        for (let i = 0; i < customInputs.length; i++) {
-          const inp = customInputs[i];
-          const isReq = (inp.dataset.required === 'true');
-          const label = inp.dataset.label || 'Question';
-          const val = inp.value.trim();
-
-          if (isReq && !val) {
-            toast('You are missing required information: ' + label, 'danger');
-            inp.style.border = '2px solid #ef4444';
-            inp.focus();
-            inp.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            return;
-          }
-
-          inp.style.border = '';
-          if (val) {
-            customResponses[label] = val;
-          }
-        }
-
-        // 3. Ensure a Slot Is Picked
+    const finalConfirmBtn = document.getElementById('btn-final-confirm-booking');
+    if (finalConfirmBtn) {
+      finalConfirmBtn.onclick = async () => {
         if (!selectedSlot && !isFullDayEvent) {
-          toast('Please select an appointment timeslot.', 'warning');
-          const slotsBox = document.getElementById('slots-card');
-          if (slotsBox) slotsBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          toast('Please select an appointment timeslot first.', 'warning');
           return;
         }
 
-        // 4. Save Booking
-        submitBtn.disabled = true;
-        submitBtn.innerText = 'Securing Booking...';
+        finalConfirmBtn.disabled = true;
+        finalConfirmBtn.innerText = 'Securing Reservation...';
 
         try {
           const sysId = 'EB-' + Math.random().toString(36).substring(2, 8).toUpperCase();
           const { data: participant, error: partErr } = await supabase
             .from('participant_profiles')
             .upsert({
-              email,
-              full_name: fullName,
-              phone,
+              email: participantData.email,
+              full_name: participantData.fullName,
+              phone: participantData.phone,
               system_participant_id: sysId
             }, { onConflict: 'email' })
             .select()
@@ -468,7 +530,7 @@ async function renderBookingWorkspace(container, event, hasPasscode) {
             participant_id: participant.id,
             booking_reference: bookingRef,
             status: 'confirmed',
-            custom_responses: customResponses
+            custom_responses: participantData.customResponses
           };
 
           if (targetSlotId) {
@@ -494,11 +556,11 @@ async function renderBookingWorkspace(container, event, hasPasscode) {
             selectedSlot
           );
 
-          renderConfirmationScreen(container, event, selectedSlot, bookingRef, fullName, activeDateObj);
+          renderConfirmationScreen(container, event, selectedSlot, bookingRef, participantData.fullName, activeDateObj);
         } catch (err) {
           toast('Booking failed: ' + err.message, 'danger');
-          submitBtn.disabled = false;
-          submitBtn.innerText = 'Confirm Booking';
+          finalConfirmBtn.disabled = false;
+          finalConfirmBtn.innerText = 'Confirm Booking';
         }
       };
     }
