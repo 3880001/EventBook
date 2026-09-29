@@ -1,6 +1,7 @@
 import { supabase } from '../supabaseClient.js';
 import { generateQRCodeDataURI, toast } from '../utils/ui.js';
 import { formatLocationHtml } from '../utils/location.js';
+import { isCheckinAllowed, getSessionTimes } from '../utils/eventEngine.js';
 
 export async function renderTicketPage(container, { param: bookingRef }) {
   if (!bookingRef) {
@@ -28,35 +29,12 @@ export async function renderTicketPage(container, { param: bookingRef }) {
   const participant = booking.participant_profiles || {};
   const slot = booking.timeslots;
 
-  // 1. Calculate Session Start and End Times
-  const now = new Date();
-  let startTime = null;
-  let endTime = null;
-
-  if (slot && slot.start_time) {
-    startTime = new Date(slot.start_time);
-    if (slot.end_time) {
-      endTime = new Date(slot.end_time);
-    } else {
-      const dur = evt.slot_duration_minutes || 15;
-      endTime = new Date(startTime.getTime() + dur * 60 * 1000);
-    }
-  } else if (evt.event_dates && evt.event_dates[0]) {
-    const ed = evt.event_dates[0];
-    const sStr = ed.start_time || '09:00:00';
-    const eStr = ed.end_time || '17:00:00';
-    startTime = new Date(ed.event_date + 'T' + sStr);
-    endTime = new Date(ed.event_date + 'T' + eStr);
-  }
-
-  // 2. Determine State: Past, Too Early, or Within Active Window
-  const isPast = endTime ? (now > endTime) : false;
-  // Check-in opens 60 minutes before start time
-  const checkinOpensAt = startTime ? new Date(startTime.getTime() - 60 * 60 * 1000) : null;
-  const isTooEarly = checkinOpensAt ? (now < checkinOpensAt) : false;
+  // 1. Universal Check-in Evaluation via eventEngine
+  const checkinStatus = isCheckinAllowed(evt, slot);
   const isAlreadyAttended = !!booking.attendance_confirmed || booking.status === 'attended';
 
-  // 3. Format Date and Time Display
+  // 2. Format Date/Time Display
+  const { startTime } = getSessionTimes(evt, slot);
   let timeDisplay = 'Whole Day Session';
   if (startTime) {
     timeDisplay = startTime.toLocaleString([], {
@@ -80,10 +58,10 @@ export async function renderTicketPage(container, { param: bookingRef }) {
     statusBadgeHtml = '<span style="background:#eff6ff; color:#2563eb; border:1px solid #bfdbfe; padding:4px 12px; border-radius:999px; font-size:0.75rem; font-weight:700; letter-spacing:0.5px;">CONFIRMED</span>';
   }
 
-  // 4. Action Button Logic at Bottom
+  // 3. Action Button Logic
   let actionBoxHtml = '';
-  if (isPast) {
-    // Event has concluded: Locked
+  if (checkinStatus.reason === 'past') {
+    // Past event: Completely locked
     if (isAlreadyAttended) {
       actionBoxHtml = '<div style="background:#f1f5f9; color:#475569; padding:0.85rem 1rem; border-radius:10px; font-weight:700; font-size:0.875rem; border:1px solid #cbd5e1;">'
         + '🔒 Event Concluded &bull; Attended'
@@ -94,20 +72,34 @@ export async function renderTicketPage(container, { param: bookingRef }) {
         + '</div>';
     }
   } else if (isAlreadyAttended) {
-    // Already checked in for an upcoming or active session
     actionBoxHtml = '<div style="background:#dcfce7; color:#166534; padding:0.85rem 1rem; border-radius:10px; font-weight:700; font-size:0.9rem; border:1px solid #86efac;">'
       + '✓ Attendance Confirmed'
       + '</div>';
-  } else if (isTooEarly) {
-    // Opened too far in advance
+  } else if (checkinStatus.reason === 'early') {
     actionBoxHtml = '<div style="background:#f8fafc; color:#64748b; padding:0.85rem 1rem; border-radius:10px; font-weight:600; font-size:0.85rem; border:1px dashed #cbd5e1;">'
       + '⏳ Check-in opens 1 hour before session'
       + '</div>';
   } else {
-    // Active session window: Check-in button available
+    // Active window
     actionBoxHtml = '<button type="button" id="btn-self-checkin" class="btn btn-primary" style="width:100%; padding:0.85rem; font-weight:700; font-size:1rem; border-radius:10px; background:#10b981; border:none; color:#ffffff; cursor:pointer;">'
       + '🟢 Confirm Attendance / I\'m Here'
       + '</button>';
+  }
+
+  // Format any custom responses
+  let customResponsesHtml = '';
+  if (booking.custom_responses && typeof booking.custom_responses === 'object') {
+    const entries = Object.entries(booking.custom_responses);
+    if (entries.length > 0) {
+      customResponsesHtml = '<div style="margin-top:1rem; padding-top:1rem; border-top:1px dashed var(--border-color); text-align:left;">';
+      entries.forEach(([k, v]) => {
+        customResponsesHtml += '<div style="display:flex; justify-content:space-between; font-size:0.85rem; margin-bottom:0.35rem;">'
+          + '<span style="color:var(--text-muted);">' + k + ':</span>'
+          + '<strong style="color:var(--text-primary);">' + v + '</strong>'
+          + '</div>';
+      });
+      customResponsesHtml += '</div>';
+    }
   }
 
   container.innerHTML = '<div style="max-width:440px; margin:2rem auto; padding:0 1rem; padding-bottom:3rem;">'
@@ -118,19 +110,18 @@ export async function renderTicketPage(container, { param: bookingRef }) {
     + '</button>'
     + '</div>'
 
-    // Pass Card with Verified Pass Top Header
     + '<div style="background:#ffffff; border:2px solid #10b981; border-radius:20px; overflow:hidden; box-shadow:0 10px 30px rgba(0,0,0,0.06); text-align:center;">'
     
-    // Top Green Header
+    // Header
     + '<div style="background:#10b981; color:#ffffff; padding:1.5rem 1.25rem;">'
     + '<div style="font-size:0.75rem; font-weight:700; letter-spacing:1px; text-transform:uppercase; opacity:0.9;">VERIFIED EVENT PASS</div>'
     + '<h1 style="margin:0.35rem 0 0 0; font-size:1.5rem; font-weight:800; color:#ffffff;">' + (evt.name || 'Event Pass') + '</h1>'
     + '</div>'
 
-    // Card Body
+    // Body
     + '<div style="padding:1.5rem;">'
     
-    // Reference & Status Row
+    // Ref Row
     + '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.25rem;">'
     + '<div style="text-align:left;">'
     + '<div style="font-size:0.75rem; font-weight:700; color:var(--text-muted); text-transform:uppercase;">REFERENCE</div>'
@@ -139,7 +130,7 @@ export async function renderTicketPage(container, { param: bookingRef }) {
     + '<div>' + statusBadgeHtml + '</div>'
     + '</div>'
 
-    // Details Gray Box
+    // Details Grid
     + '<div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:1.15rem; margin-bottom:1.5rem; text-align:left; font-size:0.875rem;">'
     + '<div style="display:flex; justify-content:space-between; margin-bottom:0.6rem;">'
     + '<span style="color:var(--text-muted);">Attendee</span>'
@@ -157,9 +148,10 @@ export async function renderTicketPage(container, { param: bookingRef }) {
     + '<span style="color:var(--text-muted);">Location</span>'
     + '<div>' + formatLocationHtml(evt.location_details, 'Online') + '</div>'
     + '</div>'
+    + customResponsesHtml
     + '</div>'
 
-    // QR Code Box
+    // QR Code
     + '<div style="margin:0 auto 1.5rem auto; width:150px; height:150px; background:#fff; padding:6px; border:1px solid #e2e8f0; border-radius:12px;">'
     + '<img src="' + qrCodeData + '" alt="QR Code" style="width:100%; height:100%; border-radius:8px;" />'
     + '</div>'
@@ -172,7 +164,6 @@ export async function renderTicketPage(container, { param: bookingRef }) {
     + '</div>'
     + '</div>';
 
-  // Bind Self Check-in Handler if Active
   const checkinBtn = document.getElementById('btn-self-checkin');
   if (checkinBtn) {
     checkinBtn.onclick = async () => {
