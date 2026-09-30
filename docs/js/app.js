@@ -1,16 +1,16 @@
-import { Router } from './router.js?v=38';
-import { renderDashboard, renderMyEvents } from './views/dashboard.js?v=38';
-import { renderWizard } from './views/wizard.js?v=38';
-import { renderPublishPage } from './views/publish.js?v=38';
-import { renderBookingPage } from './views/booking.js?v=38';
-import { renderTicketPage } from './views/ticket.js?v=38';
-import { renderRsvpPage } from './views/rsvp.js?v=38';
-import { renderAdminDashboard } from './views/admin.js?v=38';
-import { renderFeedbackPage } from './views/feedback.js?v=38';
-import { renderAuthPage } from './views/auth.js?v=38';
-import { supabase } from './supabaseClient.js?v=38';
+import { Router } from './router.js?v=39';
+import { renderDashboard, renderMyEvents } from './views/dashboard.js?v=39';
+import { renderWizard } from './views/wizard.js?v=39';
+import { renderPublishPage } from './views/publish.js?v=39';
+import { renderBookingPage } from './views/booking.js?v=39';
+import { renderTicketPage } from './views/ticket.js?v=39';
+import { renderRsvpPage } from './views/rsvp.js?v=39';
+import { renderAdminDashboard } from './views/admin.js?v=39';
+import { renderFeedbackPage } from './views/feedback.js?v=39';
+import { renderAuthPage } from './views/auth.js?v=39';
+import { supabase } from './supabaseClient.js?v=39';
 
-// Universal container resolver (never null)
+// Safe container resolver that never returns null
 function getAppContainer() {
   return document.getElementById('view') 
       || document.getElementById('content') 
@@ -19,86 +19,24 @@ function getAppContainer() {
       || document.body;
 }
 
-const router = new Router();
+// Routes dictionary definition
+const routes = {
+  '/': (context) => renderDashboard(getAppContainer(), context || {}),
+  '/dashboard': (context) => renderDashboard(getAppContainer(), context || {}),
+  '/events': (context) => renderMyEvents(getAppContainer(), context || {}),
+  '/create': (context) => renderWizard(getAppContainer(), context || {}),
+  '/edit/:id': (context) => renderWizard(getAppContainer(), context || {}),
+  '/publish/:id': (context) => renderPublishPage(getAppContainer(), context || {}),
+  '/book/:slug': (context) => renderBookingPage(getAppContainer(), context || {}),
+  '/ticket/:ref': (context) => renderTicketPage(getAppContainer(), context || {}),
+  '/rsvp/:ref/:action': (context) => renderRsvpPage(getAppContainer(), context || {}),
+  '/rsvp/:ref': (context) => renderRsvpPage(getAppContainer(), context || {}),
+  '/admin': (context) => renderAdminDashboard(getAppContainer(), context || {}),
+  // Analytics route redirects straight into the Admin Console's Analytics tab
+  '/analytics': () => { window.location.hash = '#/admin?tab=analytics'; },
+  '/feedback/:id': (context) => renderFeedbackPage(getAppContainer(), context || {}),
+  '/auth': (context) => renderAuthPage(getAppContainer(), context || {})
+};
 
-// Routes definition
-router.add('/', () => {
-  const container = getAppContainer();
-  renderDashboard(container);
-});
-
-router.add('/dashboard', () => {
-  const container = getAppContainer();
-  renderDashboard(container);
-});
-
-router.add('/events', () => {
-  const container = getAppContainer();
-  renderMyEvents(container);
-});
-
-router.add('/create', (context) => {
-  const container = getAppContainer();
-  renderWizard(container, context || {});
-});
-
-router.add('/edit/:id', (context) => {
-  const container = getAppContainer();
-  renderWizard(container, context || {});
-});
-
-router.add('/publish/:id', (context) => {
-  const container = getAppContainer();
-  renderPublishPage(container, context || {});
-});
-
-router.add('/book/:slug', (context) => {
-  const container = getAppContainer();
-  renderBookingPage(container, context || {});
-});
-
-router.add('/ticket/:ref', (context) => {
-  const container = getAppContainer();
-  renderTicketPage(container, context || {});
-});
-
-router.add('/rsvp/:ref/:action', (context) => {
-  const container = getAppContainer();
-  renderRsvpPage(container, context || {});
-});
-
-router.add('/rsvp/:ref', (context) => {
-  const container = getAppContainer();
-  renderRsvpPage(container, context || {});
-});
-
-// Admin Console
-router.add('/admin', (context) => {
-  const container = getAppContainer();
-  renderAdminDashboard(container, context || {});
-});
-
-// Analytics route is protected and opens the Admin Analytics tab directly
-router.add('/analytics', () => {
-  window.location.hash = '#/admin?tab=analytics';
-});
-
-router.add('/feedback/:id', (context) => {
-  const container = getAppContainer();
-  renderFeedbackPage(container, context || {});
-});
-
-router.add('/auth', () => {
-  const container = getAppContainer();
-  renderAuthPage(container);
-});
-
-// Initial boot
-document.addEventListener('DOMContentLoaded', () => {
-  router.init();
-});
-
-// Fallback boot if DOM is already ready
-if (document.readyState === 'complete' || document.readyState === 'interactive') {
-  router.init();
-}
+// Instantiate router with routes configuration
+const router = new Router(routes);
