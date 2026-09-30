@@ -10,7 +10,6 @@ import { renderFeedbackPage } from './views/feedback.js?v=39';
 import { renderAuthPage } from './views/auth.js?v=39';
 import { supabase } from './supabaseClient.js?v=39';
 
-// Safe container resolver that never returns null
 function getAppContainer() {
   return document.getElementById('view') 
       || document.getElementById('content') 
@@ -19,7 +18,6 @@ function getAppContainer() {
       || document.body;
 }
 
-// Routes dictionary definition
 const routes = {
   '/': (context) => renderDashboard(getAppContainer(), context || {}),
   '/dashboard': (context) => renderDashboard(getAppContainer(), context || {}),
@@ -32,11 +30,9 @@ const routes = {
   '/rsvp/:ref/:action': (context) => renderRsvpPage(getAppContainer(), context || {}),
   '/rsvp/:ref': (context) => renderRsvpPage(getAppContainer(), context || {}),
   '/admin': (context) => renderAdminDashboard(getAppContainer(), context || {}),
-  // Analytics route redirects straight into the Admin Console's Analytics tab
   '/analytics': () => { window.location.hash = '#/admin?tab=analytics'; },
   '/feedback/:id': (context) => renderFeedbackPage(getAppContainer(), context || {}),
   '/auth': (context) => renderAuthPage(getAppContainer(), context || {})
 };
 
-// Instantiate router with routes configuration
 const router = new Router(routes);
