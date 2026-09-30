@@ -1,14 +1,14 @@
-import { Router } from './router.js?v=40';
-import { renderDashboard, renderMyEvents } from './views/dashboard.js?v=40';
-import { renderWizard } from './views/wizard.js?v=40';
-import { renderPublishPage } from './views/publish.js?v=40';
-import { renderBookingPage } from './views/booking.js?v=40';
-import { renderTicketPage } from './views/ticket.js?v=40';
-import { renderRsvpPage } from './views/rsvp.js?v=40';
-import { renderAdminDashboard } from './views/admin.js?v=40';
-import { renderFeedbackPage } from './views/feedback.js?v=40';
-import { renderAuthPage } from './views/auth.js?v=40';
-import { supabase } from './supabaseClient.js?v=40';
+import { Router } from './router.js?v=42';
+import { renderDashboard, renderMyEvents } from './views/dashboard.js?v=42';
+import { renderWizard } from './views/wizard.js?v=42';
+import { renderPublishPage } from './views/publish.js?v=42';
+import { renderBookingPage } from './views/booking.js?v=42';
+import { renderTicketPage } from './views/ticket.js?v=42';
+import { renderRsvpPage } from './views/rsvp.js?v=42';
+import { renderAdminDashboard } from './views/admin.js?v=42';
+import { renderFeedbackPage } from './views/feedback.js?v=42';
+import { renderAuthPage } from './views/auth.js?v=42';
+import { supabase } from './supabaseClient.js?v=42';
 
 function getAppContainer() {
   return document.getElementById('view') 
