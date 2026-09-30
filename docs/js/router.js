@@ -28,18 +28,16 @@ export class Router {
       this.routes = {};
     }
 
-    // 1. Check for exact path match
     if (typeof this.routes[path] === 'function') {
       try {
         await this.routes[path]({ path, query, param: null, params: {} });
         return;
       } catch (err) {
-        console.error('Route handler error on path ' + path + ':', err);
+        console.error('Route error on ' + path + ':', err);
         return;
       }
     }
 
-    // 2. Check for parameterized patterns (e.g. /edit/:id, /book/:slug, /ticket/:ref)
     for (const [pattern, handler] of Object.entries(this.routes)) {
       if (!pattern.includes(':')) continue;
 
@@ -61,13 +59,12 @@ export class Router {
           await handler({ path, query, param, params });
           return;
         } catch (err) {
-          console.error('Route handler error on pattern ' + pattern + ':', err);
+          console.error('Route error on ' + pattern + ':', err);
           return;
         }
       }
     }
 
-    // 3. Fallback route to home if unmatched
     if (typeof this.routes['/'] === 'function') {
       try {
         await this.routes['/']({ path, query, param: null, params: {} });
