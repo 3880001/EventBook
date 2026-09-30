@@ -2,7 +2,7 @@ import { supabase } from '../supabaseClient.js';
 import { toast } from '../utils/ui.js';
 import { formatEventTime, formatEventDate } from '../utils/eventEngine.js';
 
-export async function renderAdminDashboard(container) {
+export async function renderAdminDashboard(container, { query } = {}) {
   container.innerHTML = '<div class="loader-center"><div class="spinner"></div></div>';
 
   const { data: { session } } = await supabase.auth.getSession();
@@ -28,18 +28,18 @@ export async function renderAdminDashboard(container) {
   const emailStats = metrics.email_stats || {};
   const dbStats = metrics.db_stats || {};
 
-  let activeTab = 'overview'; // 'overview' | 'users' | 'events' | 'tickets' | 'ops'
+  // Support deep-linking to #/admin?tab=analytics
+  let activeTab = query?.get('tab') || 'overview'; // 'overview' | 'analytics' | 'users' | 'events' | 'tickets' | 'ops'
   let ticketFilter = 'all';
 
   function renderView() {
+    let tabContent = '';
+
     // -------------------------------------------------------------
     // TAB 1: OVERVIEW & CAPACITY PLANNING
     // -------------------------------------------------------------
-    let tabContent = '';
-
     if (activeTab === 'overview') {
       tabContent = '<div style="margin-top:1.5rem;">'
-        // KPI Grid
         + '<div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:1rem; margin-bottom:1.5rem;">'
         + buildKpiCard('Total Signups', ov.total_users, 'Registered account organizers', '#3b82f6')
         + buildKpiCard('Total Events', ov.total_events, ov.published_events + ' active / published', '#10b981')
@@ -47,7 +47,6 @@ export async function renderAdminDashboard(container) {
         + buildKpiCard('Attended Sessions', ov.attended_bookings, ov.attendance_rate_pct + '% completion rate', '#f59e0b')
         + '</div>'
 
-        // Capacity & Platform Health Cards
         + '<div style="display:grid; grid-template-columns:1fr 1fr; gap:1.5rem; margin-bottom:1.5rem;">'
         + '<div class="card" style="margin:0;">'
         + '<h3 style="font-size:1.05rem; font-weight:700; margin-bottom:0.75rem;">💾 Database Capacity & Sizing</h3>'
@@ -81,7 +80,61 @@ export async function renderAdminDashboard(container) {
         + '</div>';
 
     // -------------------------------------------------------------
-    // TAB 2: ORGANIZER & USER DIRECTORY
+    // TAB 2: ANALYTICS & ATTENDANCE INTELLIGENCE (RESTRICTED TO ADMIN)
+    // -------------------------------------------------------------
+    } else if (activeTab === 'analytics') {
+      const confirmedBookings = (ov.total_bookings - ov.cancelled_bookings) || 0;
+      const noShowCount = Math.max(0, confirmedBookings - (ov.attended_bookings || 0));
+
+      let eventPerformanceRows = '';
+      events.forEach(e => {
+        eventPerformanceRows += '<tr style="border-bottom:1px solid var(--border-color);">'
+          + '<td style="padding:0.75rem 0.5rem; font-weight:700; color:var(--text-primary);">' + e.name + '</td>'
+          + '<td style="padding:0.75rem 0.5rem; font-size:0.85rem; color:var(--text-muted);">' + e.organizer_email + '</td>'
+          + '<td style="padding:0.75rem 0.5rem; font-size:0.85rem;">' + (e.timezone || 'UTC') + '</td>'
+          + '<td style="padding:0.75rem 0.5rem; text-align:center;"><span class="badge ' + (e.status === 'published' ? 'badge-success' : 'badge-neutral') + '">' + e.status + '</span></td>'
+          + '<td style="padding:0.75rem 0.5rem; font-weight:700; text-align:center; color:var(--primary);">' + e.booking_count + '</td>'
+          + '<td style="padding:0.75rem 0.5rem; text-align:right;">'
+          + '<a href="#/publish/' + e.id + '" class="btn btn-secondary btn-sm" style="font-size:0.75rem; padding:0.25rem 0.5rem;">Audit &rarr;</a>'
+          + '</td>'
+          + '</tr>';
+      });
+
+      tabContent = '<div style="margin-top:1.5rem;">'
+        + '<div style="background:#f8fafc; border:1px solid var(--border-color); border-radius:12px; padding:1.25rem; margin-bottom:1.5rem;">'
+        + '<h3 style="font-size:1.15rem; font-weight:700; margin:0 0 0.35rem 0;">📈 Enterprise Platform Analytics</h3>'
+        + '<p style="color:var(--text-muted); font-size:0.85rem; margin:0;">Administrative insights into overall booking conversion, show-up rates, and organizer capacity utilization.</p>'
+        + '</div>'
+
+        // Analytics KPI Grid
+        + '<div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:1rem; margin-bottom:1.5rem;">'
+        + buildKpiCard('Total Reservations', ov.total_bookings, 'Gross lifetime bookings', '#2563eb')
+        + buildKpiCard('Attendance Rate', (ov.attendance_rate_pct || 0) + '%', ov.attended_bookings + ' verified checked-in', '#10b981')
+        + buildKpiCard('No-Show Rate', (confirmedBookings > 0 ? Math.round((noShowCount / confirmedBookings) * 100) : 0) + '%', noShowCount + ' unconfirmed attendees', '#f59e0b')
+        + buildKpiCard('Cancellation Rate', (ov.total_bookings > 0 ? Math.round((ov.cancelled_bookings / ov.total_bookings) * 100) : 0) + '%', ov.cancelled_bookings + ' cancellations', '#ef4444')
+        + '</div>'
+
+        // Event Performance Ranking Table
+        + '<div class="card">'
+        + '<h3 style="font-size:1.05rem; font-weight:700; margin-bottom:1rem;">Top Events by Engagement</h3>'
+        + '<div class="table-responsive">'
+        + '<table style="width:100%; border-collapse:collapse; text-align:left; font-size:0.9rem;">'
+        + '<thead><tr style="border-bottom:2px solid var(--border-color); color:var(--text-muted); font-size:0.8rem; text-transform:uppercase;">'
+        + '<th style="padding:0.6rem 0.5rem;">EVENT</th>'
+        + '<th style="padding:0.6rem 0.5rem;">ORGANIZER</th>'
+        + '<th style="padding:0.6rem 0.5rem;">TIMEZONE</th>'
+        + '<th style="padding:0.6rem 0.5rem; text-align:center;">STATUS</th>'
+        + '<th style="padding:0.6rem 0.5rem; text-align:center;">BOOKINGS</th>'
+        + '<th style="padding:0.6rem 0.5rem; text-align:right;">ACTION</th>'
+        + '</tr></thead>'
+        + '<tbody>' + eventPerformanceRows + '</tbody>'
+        + '</table>'
+        + '</div>'
+        + '</div>'
+        + '</div>';
+
+    // -------------------------------------------------------------
+    // TAB 3: ORGANIZER & USER DIRECTORY
     // -------------------------------------------------------------
     } else if (activeTab === 'users') {
       let usersRows = '';
@@ -118,7 +171,7 @@ export async function renderAdminDashboard(container) {
         + '</div>';
 
     // -------------------------------------------------------------
-    // TAB 3: MASTER EVENT EXPLORER
+    // TAB 4: MASTER EVENT EXPLORER
     // -------------------------------------------------------------
     } else if (activeTab === 'events') {
       let eventsRows = '';
@@ -156,7 +209,7 @@ export async function renderAdminDashboard(container) {
         + '</div>';
 
     // -------------------------------------------------------------
-    // TAB 4: HELP DESK & ISSUE TICKETING
+    // TAB 5: HELP DESK & ISSUE TICKETING
     // -------------------------------------------------------------
     } else if (activeTab === 'tickets') {
       const filteredTickets = tickets.filter(t => ticketFilter === 'all' ? true : t.status === ticketFilter);
@@ -221,7 +274,7 @@ export async function renderAdminDashboard(container) {
         + '</div>';
 
     // -------------------------------------------------------------
-    // TAB 5: OPERATIONS, TUNING & SYSTEM HEALTH
+    // TAB 6: OPERATIONS, TUNING & SYSTEM HEALTH
     // -------------------------------------------------------------
     } else if (activeTab === 'ops') {
       let cronRows = '';
@@ -241,14 +294,13 @@ export async function renderAdminDashboard(container) {
 
       tabContent = '<div style="margin-top:1.5rem;">'
         + '<div style="display:grid; grid-template-columns:1fr 1fr; gap:1.5rem; margin-bottom:1.5rem;">'
-        // System Release & Upgrade Status
         + '<div class="card" style="margin:0;">'
         + '<h3 style="font-size:1.05rem; font-weight:700; margin-bottom:0.75rem;">🚀 Release & Version Control</h3>'
         + '<div style="display:flex; justify-content:space-between; padding:0.5rem 0; border-bottom:1px solid var(--border-color);">'
         + '<span style="color:var(--text-muted);">Platform Version</span><strong>v1.3.4 (Production)</strong>'
         + '</div>'
         + '<div style="display:flex; justify-content:space-between; padding:0.5rem 0; border-bottom:1px solid var(--border-color);">'
-        + '<span style="color:var(--text-muted);">Cache Tag</span><span style="font-family:monospace; font-weight:700;">?v=34</span>'
+        + '<span style="color:var(--text-muted);">Cache Tag</span><span style="font-family:monospace; font-weight:700;">?v=38</span>'
         + '</div>'
         + '<div style="display:flex; justify-content:space-between; padding:0.5rem 0; border-bottom:1px solid var(--border-color);">'
         + '<span style="color:var(--text-muted);">CI/CD Pipeline</span><span class="badge badge-success">GitHub Actions Active</span>'
@@ -258,7 +310,6 @@ export async function renderAdminDashboard(container) {
         + '</div>'
         + '</div>'
 
-        // Maintenance & Tuning Actions
         + '<div class="card" style="margin:0;">'
         + '<h3 style="font-size:1.05rem; font-weight:700; margin-bottom:0.75rem;">⚡ Performance & System Tuning</h3>'
         + '<p style="color:var(--text-muted); font-size:0.85rem; margin-bottom:1rem;">Execute hot maintenance commands across the production cluster.</p>'
@@ -273,7 +324,6 @@ export async function renderAdminDashboard(container) {
         + '</div>'
         + '</div>'
 
-        // Cron Background Scheduler Health
         + '<div class="card">'
         + '<h3 style="font-size:1.05rem; font-weight:700; margin-bottom:0.25rem;">⏱️ Background Cron Job Runs (`eventbook-reminder-job`)</h3>'
         + '<p style="color:var(--text-muted); font-size:0.85rem; margin-bottom:1rem;">Evaluates scheduled reminders and interactive 1-click RSVP dispatches every 5 minutes.</p>'
@@ -289,7 +339,7 @@ export async function renderAdminDashboard(container) {
         + '</div>';
     }
 
-    // Modal for filing an issue / ticket
+    // Modal for filing a support ticket
     const fileTicketModalHtml = '<div id="ticket-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:9999; align-items:center; justify-content:center; padding:1rem;">'
       + '<div class="card" style="max-width:500px; width:100%; padding:2rem; border-radius:14px; background:#fff;">'
       + '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">'
@@ -327,7 +377,6 @@ export async function renderAdminDashboard(container) {
       + '</div>';
 
     container.innerHTML = '<div style="max-width:1150px; margin:0 auto; padding-bottom:4rem;">'
-      // Header
       + '<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem; margin-bottom:1.5rem;">'
       + '<div>'
       + '<div style="font-size:0.75rem; font-weight:800; color:var(--primary); text-transform:uppercase; letter-spacing:1px;">Global Enterprise Administration</div>'
@@ -340,9 +389,10 @@ export async function renderAdminDashboard(container) {
       + '</div>'
       + '</div>'
 
-      // Navigation Tabs
+      // Admin Tabs (Includes Analytics)
       + '<div style="display:flex; border-bottom:2px solid var(--border-color); gap:0.5rem; flex-wrap:wrap;">'
       + buildTabButton('overview', '📊 Platform Overview', activeTab)
+      + buildTabButton('analytics', '📈 Analytics & Intelligence', activeTab)
       + buildTabButton('users', '👥 Organizers (' + users.length + ')', activeTab)
       + buildTabButton('events', '📅 Master Events (' + events.length + ')', activeTab)
       + buildTabButton('tickets', '🎫 Help Desk (' + tickets.length + ')', activeTab)
@@ -372,7 +422,6 @@ export async function renderAdminDashboard(container) {
   }
 
   function bindEvents() {
-    // Tab switching
     document.querySelectorAll('.btn-tab').forEach(btn => {
       btn.onclick = () => {
         activeTab = btn.dataset.tab;
@@ -380,13 +429,11 @@ export async function renderAdminDashboard(container) {
       };
     });
 
-    // Refresh
     const refreshBtn = document.getElementById('btn-refresh-admin');
     if (refreshBtn) {
-      refreshBtn.onclick = () => renderAdminDashboard(container);
+      refreshBtn.onclick = () => renderAdminDashboard(container, { query });
     }
 
-    // Filter tickets
     document.querySelectorAll('.btn-filter-ticket').forEach(btn => {
       btn.onclick = () => {
         ticketFilter = btn.dataset.filter;
@@ -394,7 +441,6 @@ export async function renderAdminDashboard(container) {
       };
     });
 
-    // Update ticket status
     document.querySelectorAll('.select-ticket-status').forEach(sel => {
       sel.onchange = async () => {
         const ticketId = sel.dataset.id;
@@ -418,7 +464,6 @@ export async function renderAdminDashboard(container) {
       };
     });
 
-    // File ticket modal
     const openTicketBtn = document.getElementById('btn-create-test-ticket');
     const ticketModal = document.getElementById('ticket-modal');
     const closeTicketBtn = document.getElementById('btn-close-ticket-modal');
@@ -430,7 +475,6 @@ export async function renderAdminDashboard(container) {
       closeTicketBtn.onclick = () => { ticketModal.style.display = 'none'; };
     }
 
-    // Submit ticket
     const ticketForm = document.getElementById('form-file-ticket');
     if (ticketForm) {
       ticketForm.onsubmit = async (e) => {
@@ -463,12 +507,11 @@ export async function renderAdminDashboard(container) {
           submitBtn.disabled = false;
         } else {
           toast('Support ticket ' + ref + ' submitted successfully!', 'success');
-          renderAdminDashboard(container);
+          renderAdminDashboard(container, { query });
         }
       };
     }
 
-    // Maintenance Actions
     const reloadSchemaBtn = document.getElementById('btn-admin-reload-schema');
     if (reloadSchemaBtn) {
       reloadSchemaBtn.onclick = async () => {
@@ -490,7 +533,7 @@ export async function renderAdminDashboard(container) {
         if (rpcErr) toast('Error: ' + rpcErr.message, 'danger');
         else {
           toast('✓ Expired unbooked slots purged!', 'success');
-          renderAdminDashboard(container);
+          renderAdminDashboard(container, { query });
         }
       };
     }
