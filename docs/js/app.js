@@ -1,56 +1,104 @@
-import { Router } from './router.js?v=37';
-import { renderDashboard, renderMyEvents } from './views/dashboard.js?v=37';
-import { renderWizard } from './views/wizard.js?v=37';
-import { renderPublishPage } from './views/publish.js?v=37';
-import { renderBookingPage } from './views/booking.js?v=37';
-import { renderTicketPage } from './views/ticket.js?v=37';
-import { renderRsvpPage } from './views/rsvp.js?v=37';
-import { renderAdminDashboard } from './views/admin.js?v=37';
-import { renderAnalyticsPage } from './views/analytics.js?v=37';
-import { renderFeedbackPage } from './views/feedback.js?v=37';
-import { renderAuthPage } from './views/auth.js?v=37';
-import { supabase } from './supabaseClient.js?v=37';
+import { Router } from './router.js?v=38';
+import { renderDashboard, renderMyEvents } from './views/dashboard.js?v=38';
+import { renderWizard } from './views/wizard.js?v=38';
+import { renderPublishPage } from './views/publish.js?v=38';
+import { renderBookingPage } from './views/booking.js?v=38';
+import { renderTicketPage } from './views/ticket.js?v=38';
+import { renderRsvpPage } from './views/rsvp.js?v=38';
+import { renderAdminDashboard } from './views/admin.js?v=38';
+import { renderFeedbackPage } from './views/feedback.js?v=38';
+import { renderAuthPage } from './views/auth.js?v=38';
+import { supabase } from './supabaseClient.js?v=38';
 
-// Route Registry
-const routes = {
-  '/auth': (root) => renderAuthPage(root),
-  '/dashboard': (root) => renderDashboard(root),
-  '/events': (root) => renderMyEvents(root),
-  '/create': (root, ctx) => renderWizard(root, ctx),
-  '/edit/:id': (root, ctx) => renderWizard(root, ctx),
-  '/publish/:id': (root, ctx) => renderPublishPage(root, ctx),
-  '/book/:slug': (root, ctx) => renderBookingPage(root, ctx),
-  '/ticket/:ref': (root, ctx) => renderTicketPage(root, ctx),
-  '/rsvp/:ref/:action': (root, ctx) => renderRsvpPage(root, ctx),
-  '/analytics/:id': (root, ctx) => renderAnalyticsPage(root, ctx),
-  '/feedback/:id': (root, ctx) => renderFeedbackPage(root, ctx),
-  '/admin': (root) => renderAdminDashboard(root)
-};
+// Universal container resolver (never null)
+function getAppContainer() {
+  return document.getElementById('view') 
+      || document.getElementById('content') 
+      || document.getElementById('app') 
+      || document.querySelector('main') 
+      || document.body;
+}
 
-// Initialize Router directly without intermediate variable declaration
-new Router(routes, document.getElementById('app-root'));
+const router = new Router();
 
-// Track authentication state
-supabase.auth.onAuthStateChange((event, session) => {
-  const authBtn = document.getElementById('btn-auth-action');
-  const mainNav = document.getElementById('main-nav');
-
-  if (session?.user) {
-    if (authBtn) {
-      authBtn.innerText = 'Sign Out';
-      authBtn.onclick = async () => {
-        await supabase.auth.signOut();
-        window.location.hash = '#/auth';
-      };
-    }
-    if (mainNav) mainNav.style.display = 'flex';
-  } else {
-    if (authBtn) {
-      authBtn.innerText = 'Sign In';
-      authBtn.onclick = () => {
-        window.location.hash = '#/auth';
-      };
-    }
-    if (mainNav) mainNav.style.display = 'none';
-  }
+// Routes definition
+router.add('/', () => {
+  const container = getAppContainer();
+  renderDashboard(container);
 });
+
+router.add('/dashboard', () => {
+  const container = getAppContainer();
+  renderDashboard(container);
+});
+
+router.add('/events', () => {
+  const container = getAppContainer();
+  renderMyEvents(container);
+});
+
+router.add('/create', (context) => {
+  const container = getAppContainer();
+  renderWizard(container, context || {});
+});
+
+router.add('/edit/:id', (context) => {
+  const container = getAppContainer();
+  renderWizard(container, context || {});
+});
+
+router.add('/publish/:id', (context) => {
+  const container = getAppContainer();
+  renderPublishPage(container, context || {});
+});
+
+router.add('/book/:slug', (context) => {
+  const container = getAppContainer();
+  renderBookingPage(container, context || {});
+});
+
+router.add('/ticket/:ref', (context) => {
+  const container = getAppContainer();
+  renderTicketPage(container, context || {});
+});
+
+router.add('/rsvp/:ref/:action', (context) => {
+  const container = getAppContainer();
+  renderRsvpPage(container, context || {});
+});
+
+router.add('/rsvp/:ref', (context) => {
+  const container = getAppContainer();
+  renderRsvpPage(container, context || {});
+});
+
+// Admin Console
+router.add('/admin', (context) => {
+  const container = getAppContainer();
+  renderAdminDashboard(container, context || {});
+});
+
+// Analytics route is protected and opens the Admin Analytics tab directly
+router.add('/analytics', () => {
+  window.location.hash = '#/admin?tab=analytics';
+});
+
+router.add('/feedback/:id', (context) => {
+  const container = getAppContainer();
+  renderFeedbackPage(container, context || {});
+});
+
+router.add('/auth', () => {
+  const container = getAppContainer();
+  renderAuthPage(container);
+});
+
+// Initial boot
+document.addEventListener('DOMContentLoaded', () => {
+  router.init();
+});
+
+// Fallback boot if DOM is already ready
+if (document.readyState === 'complete' || document.readyState === 'interactive') {
+  router.init();
+}
