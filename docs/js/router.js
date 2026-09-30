@@ -1,71 +1,79 @@
-import { supabase } from './supabaseClient.js';
-
 export class Router {
-  constructor(routes, container) {
-    this.routes = routes;
-    this.container = container;
+  constructor(routes = {}) {
+    this.routes = routes || {};
     this.init();
+  }
+
+  add(pattern, handler) {
+    if (!this.routes) this.routes = {};
+    this.routes[pattern] = handler;
   }
 
   init() {
     window.addEventListener('hashchange', () => this.handleRoute());
-    window.addEventListener('load', () => this.handleRoute());
-    if (!window.location.hash) {
-      window.location.hash = '#/dashboard';
+    if (document.readyState === 'complete' || document.readyState === 'interactive') {
+      this.handleRoute();
+    } else {
+      window.addEventListener('DOMContentLoaded', () => this.handleRoute());
     }
   }
 
   async handleRoute() {
-    const fullHash = window.location.hash.slice(1) || '/dashboard';
-    const [path, queryString] = fullHash.split('?');
-    const queryParams = new URLSearchParams(queryString || '');
+    const rawHash = window.location.hash.slice(1) || '/';
+    const [pathPart, queryString] = rawHash.split('?');
+    const path = pathPart.startsWith('/') ? pathPart : '/' + pathPart;
+    const query = new URLSearchParams(queryString || '');
 
-    // Public routes that don't require organizer sign-in
-    const isPublicRoute = path.startsWith('/book') || path.startsWith('/ticket') || path.startsWith('/rsvp') || path.startsWith('/feedback') || path === '/auth';
-
-    const { data: { session } } = await supabase.auth.getSession();
-
-    if (!session && !isPublicRoute) {
-      window.location.hash = '#/auth';
-      return;
+    if (!this.routes || typeof this.routes !== 'object') {
+      this.routes = {};
     }
 
-    if (session && path === '/auth') {
-      window.location.hash = '#/dashboard';
-      return;
+    // 1. Check for exact path match
+    if (typeof this.routes[path] === 'function') {
+      try {
+        await this.routes[path]({ path, query, param: null, params: {} });
+        return;
+      } catch (err) {
+        console.error('Route handler error on path ' + path + ':', err);
+        return;
+      }
     }
 
-    // Dynamic Route Matching
-    for (const [routePattern, handler] of Object.entries(this.routes)) {
-      const patternParts = routePattern.split('/').filter(Boolean);
-      const pathParts = path.split('/').filter(Boolean);
+    // 2. Check for parameterized patterns (e.g. /edit/:id, /book/:slug, /ticket/:ref)
+    for (const [pattern, handler] of Object.entries(this.routes)) {
+      if (!pattern.includes(':')) continue;
 
-      if (patternParts.length === pathParts.length) {
-        let match = true;
-        let param = null;
-        let params = {};
+      const paramNames = [];
+      const regexPattern = '^' + pattern.replace(/:([a-zA-Z0-9_]+)/g, (_, name) => {
+        paramNames.push(name);
+        return '([^/]+)';
+      }) + '$';
 
-        for (let i = 0; i < patternParts.length; i++) {
-          if (patternParts[i].startsWith(':')) {
-            const paramName = patternParts[i].slice(1);
-            params[paramName] = decodeURIComponent(pathParts[i]);
-            if (!param) param = decodeURIComponent(pathParts[i]);
-          } else if (patternParts[i] !== pathParts[i]) {
-            match = false;
-            break;
-          }
-        }
+      const match = path.match(new RegExp(regexPattern));
+      if (match) {
+        const params = {};
+        paramNames.forEach((name, i) => {
+          params[name] = decodeURIComponent(match[i + 1]);
+        });
+        const param = paramNames.length > 0 ? params[paramNames[0]] : null;
 
-        if (match) {
-          handler(this.container, { param, params, query: queryParams });
+        try {
+          await handler({ path, query, param, params });
+          return;
+        } catch (err) {
+          console.error('Route handler error on pattern ' + pattern + ':', err);
           return;
         }
       }
     }
 
-    // Default route fallback
-    if (this.routes['/dashboard']) {
-      this.routes['/dashboard'](this.container, { query: queryParams });
+    // 3. Fallback route to home if unmatched
+    if (typeof this.routes['/'] === 'function') {
+      try {
+        await this.routes['/']({ path, query, param: null, params: {} });
+      } catch (err) {
+        console.error('Fallback route error:', err);
+      }
     }
   }
 }
