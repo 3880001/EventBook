@@ -6,17 +6,18 @@
   <meta name="description" content="EventBook - Enterprise Event Scheduling, Ticketing, and Attendance Management Platform" />
   <title>EventBook - Event Scheduling & Attendance Platform</title>
 
-  <!-- Inline Calendar Favicon (Prevents 404 in console) -->
-<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📅</text></svg>">
+  <!-- Inline Favicon (Prevents 404 in console) -->
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📅</text></svg>">
+
   <!-- Google Fonts: Inter -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
 
-  <!-- Supabase Official SDK (Provides window.supabase for supabaseClient.js) -->
+  <!-- Supabase Official SDK -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
-  <!-- Complete Inlined Production Stylesheet -->
+  <!-- Complete Inlined Production Stylesheet with Restored KPI Grid -->
   <style>
     :root {
       --primary: #2563eb;
@@ -136,6 +137,42 @@
     .btn-create-event:hover {
       background: var(--primary-hover) !important;
       color: #ffffff !important;
+    }
+
+    /* ============================================================= */
+    /* KPI METRICS & STATS GRID (Restores 4-Column Square Layout)   */
+    /* ============================================================= */
+    .grid-cards,
+    .metrics-grid,
+    .stats-grid,
+    .dashboard-grid,
+    .kpi-grid {
+      display: grid !important;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)) !important;
+      gap: 1.25rem !important;
+      margin-bottom: 1.5rem !important;
+    }
+
+    @media (min-width: 900px) {
+      .grid-cards,
+      .metrics-grid,
+      .stats-grid,
+      .dashboard-grid,
+      .kpi-grid {
+        grid-template-columns: repeat(4, 1fr) !important;
+      }
+    }
+
+    .grid-cards > .card,
+    .metrics-grid > .card,
+    .stats-grid > .card,
+    .dashboard-grid > .card,
+    .kpi-grid > .card {
+      margin-bottom: 0 !important;
+      min-height: 140px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
     }
 
     /* Core UI Elements */
@@ -273,8 +310,6 @@
 
     .mobile-nav-item svg { width: 20px; height: 20px; }
     .mobile-nav-item.active, .mobile-nav-item:hover { color: var(--primary); }
-
-    /* Mobile admin item hidden by default */
     #mob-nav-admin { display: none; }
 
     #app, #content, #view {
@@ -367,7 +402,7 @@
           <span>My Events</span>
         </a>
 
-        <!-- Protected Admin Console Link (Hidden for regular users) -->
+        <!-- Protected Admin Link (Visible only to Super Admin) -->
         <a href="#/admin" class="nav-link nav-link-admin" id="nav-admin" title="Global Super Admin Console">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
@@ -388,7 +423,7 @@
     </div>
   </header>
 
-  <!-- Complete Nested View Injection Mount Points -->
+  <!-- Mount Point: Provides #app, #content, and #view simultaneously -->
   <main id="app" class="container app main-content" role="main">
     <div id="content" class="content main container">
       <div id="view" class="view">
@@ -428,7 +463,7 @@
       <span>Create</span>
     </a>
 
-    <!-- Mobile Admin Item (Hidden for regular users) -->
+    <!-- Mobile Admin Link (Visible only to Super Admin) -->
     <a href="#/admin" class="mobile-nav-item" id="mob-nav-admin">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
@@ -440,7 +475,7 @@
   <!-- Notification Toast Container -->
   <div id="toast-container" aria-live="polite"></div>
 
-  <!-- Dynamic Admin Navigation & Active Route Handler -->
+  <!-- Dynamic Role-Based Navigation & Route Handler -->
   <script>
     function updateActiveNav() {
       const hash = window.location.hash || '#/';
@@ -454,7 +489,6 @@
       });
     }
 
-    // Role-Based Navigation Guard: Shows Admin link ONLY if authenticated Super Admin
     async function syncAdminNavVisibility() {
       try {
         const client = window.__eventbook_supabase_client;
@@ -462,21 +496,23 @@
 
         const { data: { session } } = await client.auth.getSession();
         if (!session?.user) {
-          document.getElementById('nav-admin').style.display = 'none';
-          document.getElementById('mob-nav-admin').style.display = 'none';
+          const adminNav = document.getElementById('nav-admin');
+          const mobAdminNav = document.getElementById('mob-nav-admin');
+          if (adminNav) adminNav.style.display = 'none';
+          if (mobAdminNav) mobAdminNav.style.display = 'none';
           return;
         }
 
+        const isSuperAdminEmail = session.user.email && session.user.email.toLowerCase() === 'satpurush.baps@gmail.com';
         const { data: isAdmin } = await client.rpc('is_super_admin');
-        const displayVal = isAdmin ? 'inline-flex' : 'none';
-        const mobDisplay = isAdmin ? 'flex' : 'none';
+        const showAdmin = !!(isAdmin || isSuperAdminEmail);
 
         const adminNav = document.getElementById('nav-admin');
         const mobAdminNav = document.getElementById('mob-nav-admin');
-        if (adminNav) adminNav.style.display = displayVal;
-        if (mobAdminNav) mobAdminNav.style.display = mobDisplay;
+        if (adminNav) adminNav.style.display = showAdmin ? 'inline-flex' : 'none';
+        if (mobAdminNav) mobAdminNav.style.display = showAdmin ? 'flex' : 'none';
       } catch (e) {
-        // Fallback: keep admin link hidden on error
+        // Fallback: stay hidden
       }
     }
 
@@ -487,12 +523,12 @@
 
     window.addEventListener('DOMContentLoaded', () => {
       updateActiveNav();
-      setTimeout(syncAdminNavVisibility, 500);
+      setTimeout(syncAdminNavVisibility, 400);
     });
   </script>
 
-  <!-- Production App Bootstrapper with Version Cache-Busting -->
-  <script type="module" src="js/app.js?v=40"></script>
+  <!-- Production App Bootstrapper with Cache-Busting -->
+  <script type="module" src="js/app.js?v=42"></script>
 
 </body>
 </html>
