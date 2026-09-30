@@ -11,11 +11,13 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
 
-  <!-- Global Application Stylesheet -->
-  <link rel="stylesheet" href="css/style.css?v=35" />
+  <!-- Supabase Official SDK (Provides window.supabase for supabaseClient.js) -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <!-- Correct Root Stylesheet -->
+  <link rel="stylesheet" href="style.css?v=36" />
 
   <style>
-    /* Global Navigation Layout Styles */
     :root {
       --nav-height: 64px;
     }
@@ -63,10 +65,6 @@
       letter-spacing: -0.5px;
     }
 
-    .brand-logo svg {
-      color: var(--primary, #2563eb);
-    }
-
     .main-nav {
       display: flex;
       align-items: center;
@@ -86,22 +84,17 @@
       transition: all 0.15s ease-in-out;
     }
 
-    .nav-link:hover {
-      color: var(--primary, #2563eb);
-      background: #eff6ff;
-    }
-
-    .nav-link.active {
+    .nav-link:hover, .nav-link.active {
       color: var(--primary, #2563eb);
       background: #eff6ff;
     }
 
     .nav-link-admin {
-      color: #475569;
+      color: #334155;
       font-weight: 700;
     }
 
-    .nav-link-admin:hover {
+    .nav-link-admin:hover, .nav-link-admin.active {
       color: #1e293b;
       background: #f1f5f9;
     }
@@ -127,7 +120,6 @@
       color: #ffffff !important;
     }
 
-    /* Mobile Bottom Navigation */
     .mobile-bottom-nav {
       display: none;
       position: fixed;
@@ -162,12 +154,10 @@
       height: 20px;
     }
 
-    .mobile-nav-item.active,
-    .mobile-nav-item:hover {
+    .mobile-nav-item.active, .mobile-nav-item:hover {
       color: var(--primary, #2563eb);
     }
 
-    /* Main Container Mount Point */
     #app {
       flex: 1;
       width: 100%;
@@ -177,7 +167,6 @@
       box-sizing: border-box;
     }
 
-    /* Toast Container */
     #toast-container {
       position: fixed;
       bottom: 1.5rem;
@@ -204,25 +193,10 @@
       animation: toastIn 0.2s ease-out;
     }
 
-    .toast-success {
-      background: #10b981;
-      color: #ffffff;
-    }
-
-    .toast-danger {
-      background: #ef4444;
-      color: #ffffff;
-    }
-
-    .toast-warning {
-      background: #f59e0b;
-      color: #ffffff;
-    }
-
-    .toast-info {
-      background: #3b82f6;
-      color: #ffffff;
-    }
+    .toast-success { background: #10b981; color: #ffffff; }
+    .toast-danger { background: #ef4444; color: #ffffff; }
+    .toast-warning { background: #f59e0b; color: #ffffff; }
+    .toast-info { background: #3b82f6; color: #ffffff; }
 
     @keyframes toastIn {
       from { transform: translateY(10px); opacity: 0; }
@@ -230,20 +204,10 @@
     }
 
     @media (max-width: 768px) {
-      .main-nav {
-        display: none;
-      }
-      .mobile-bottom-nav {
-        display: flex;
-      }
-      #app {
-        padding-bottom: 5.5rem;
-      }
-      #toast-container {
-        bottom: 4.5rem;
-        left: 1rem;
-        right: 1rem;
-      }
+      .main-nav { display: none; }
+      .mobile-bottom-nav { display: flex; }
+      #app { padding-bottom: 5.5rem; }
+      #toast-container { bottom: 4.5rem; left: 1rem; right: 1rem; }
     }
   </style>
 </head>
@@ -350,7 +314,6 @@
       <span>Create</span>
     </a>
 
-    <!-- Mobile Admin Link -->
     <a href="#/admin" class="mobile-nav-item" id="mob-nav-admin">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
@@ -380,7 +343,7 @@
   </script>
 
   <!-- Production App Loader with Version Cache-Busting -->
-  <script type="module" src="js/app.js?v=35"></script>
+  <script type="module" src="js/app.js?v=36"></script>
 
 </body>
 </html>
