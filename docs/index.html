@@ -11,32 +11,46 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
 
-  <!-- Supabase Official SDK (Provides window.supabase for supabaseClient.js) -->
+  <!-- Supabase Official SDK (Required for supabaseClient.js) -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
-  <!-- Correct Root Stylesheet -->
-  <link rel="stylesheet" href="style.css?v=36" />
-
+  <!-- Complete Inlined Production Design System (Eliminates CSS 404s) -->
   <style>
     :root {
+      --primary: #2563eb;
+      --primary-hover: #1d4ed8;
+      --primary-light: #eff6ff;
+      --success: #10b981;
+      --danger: #ef4444;
+      --warning: #f59e0b;
+      --bg-main: #f8fafc;
+      --card-bg: #ffffff;
+      --text-primary: #0f172a;
+      --text-muted: #64748b;
+      --border-color: #e2e8f0;
       --nav-height: 64px;
+    }
+
+    * {
+      box-sizing: border-box;
     }
 
     body {
       margin: 0;
       padding: 0;
       font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      background-color: var(--bg-main, #f8fafc);
-      color: var(--text-primary, #0f172a);
+      background-color: var(--bg-main);
+      color: var(--text-primary);
       min-height: 100vh;
       display: flex;
       flex-direction: column;
     }
 
+    /* Header & Navigation */
     .main-header {
       height: var(--nav-height);
       background: #ffffff;
-      border-bottom: 1px solid var(--border-color, #e2e8f0);
+      border-bottom: 1px solid var(--border-color);
       position: sticky;
       top: 0;
       z-index: 1000;
@@ -61,8 +75,12 @@
       text-decoration: none;
       font-size: 1.3rem;
       font-weight: 800;
-      color: var(--primary, #2563eb);
+      color: var(--primary);
       letter-spacing: -0.5px;
+    }
+
+    .brand-logo svg {
+      color: var(--primary);
     }
 
     .main-nav {
@@ -79,14 +97,14 @@
       border-radius: 8px;
       font-size: 0.9rem;
       font-weight: 600;
-      color: var(--text-muted, #64748b);
+      color: var(--text-muted);
       text-decoration: none;
       transition: all 0.15s ease-in-out;
     }
 
     .nav-link:hover, .nav-link.active {
-      color: var(--primary, #2563eb);
-      background: #eff6ff;
+      color: var(--primary);
+      background: var(--primary-light);
     }
 
     .nav-link-admin {
@@ -95,7 +113,7 @@
     }
 
     .nav-link-admin:hover, .nav-link-admin.active {
-      color: #1e293b;
+      color: #0f172a;
       background: #f1f5f9;
     }
 
@@ -105,7 +123,7 @@
       gap: 0.4rem;
       padding: 0.5rem 1.15rem;
       border-radius: 9999px;
-      background: var(--primary, #2563eb);
+      background: var(--primary);
       color: #ffffff !important;
       font-size: 0.875rem;
       font-weight: 700;
@@ -116,10 +134,156 @@
     }
 
     .btn-create-event:hover {
-      background: #1d4ed8 !important;
+      background: var(--primary-hover) !important;
       color: #ffffff !important;
     }
 
+    /* Core UI Elements */
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+    }
+
+    .form-group {
+      margin-bottom: 1.25rem;
+    }
+
+    .form-label {
+      display: block;
+      font-size: 0.875rem;
+      font-weight: 600;
+      margin-bottom: 0.4rem;
+      color: var(--text-primary);
+    }
+
+    .form-control {
+      width: 100%;
+      padding: 0.65rem 0.85rem;
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      font-size: 0.95rem;
+      font-family: inherit;
+      color: var(--text-primary);
+      background: #ffffff;
+      transition: border-color 0.15s ease;
+    }
+
+    .form-control:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+    }
+
+    .form-control-sm {
+      padding: 0.35rem 0.6rem;
+      font-size: 0.85rem;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.4rem;
+      padding: 0.65rem 1.25rem;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+      transition: all 0.15s ease;
+      border: 1px solid transparent;
+      font-family: inherit;
+    }
+
+    .btn-primary {
+      background: var(--primary);
+      color: #ffffff;
+    }
+
+    .btn-primary:hover:not(:disabled) {
+      background: var(--primary-hover);
+    }
+
+    .btn-secondary {
+      background: #ffffff;
+      color: #334155;
+      border-color: var(--border-color);
+    }
+
+    .btn-secondary:hover:not(:disabled) {
+      background: #f1f5f9;
+      border-color: #cbd5e1;
+    }
+
+    .btn-danger {
+      background: #ef4444;
+      color: #ffffff;
+    }
+
+    .btn-danger:hover:not(:disabled) {
+      background: #dc2626;
+    }
+
+    .btn-sm {
+      padding: 0.35rem 0.75rem;
+      font-size: 0.8rem;
+    }
+
+    .btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    /* Badges */
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 8px;
+      border-radius: 6px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+    }
+
+    .badge-success { background: #dcfce7; color: #166534; }
+    .badge-danger { background: #fee2e2; color: #991b1b; }
+    .badge-warning { background: #fef3c7; color: #92400e; }
+    .badge-neutral { background: #f1f5f9; color: #475569; }
+    .badge-primary { background: #dbeafe; color: #1e40af; }
+
+    /* Tables */
+    .table-responsive {
+      width: 100%;
+      overflow-x: auto;
+    }
+
+    /* Spinners & Loaders */
+    .loader-center {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 50vh;
+    }
+
+    .spinner {
+      width: 40px;
+      height: 40px;
+      border: 4px solid var(--border-color);
+      border-top-color: var(--primary);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* Mobile Bottom Navigation */
     .mobile-bottom-nav {
       display: none;
       position: fixed;
@@ -128,7 +292,7 @@
       right: 0;
       height: 60px;
       background: #ffffff;
-      border-top: 1px solid #e2e8f0;
+      border-top: 1px solid var(--border-color);
       z-index: 1000;
       justify-content: space-around;
       align-items: center;
@@ -142,7 +306,7 @@
       justify-content: center;
       gap: 2px;
       text-decoration: none;
-      color: #64748b;
+      color: var(--text-muted);
       font-size: 0.72rem;
       font-weight: 600;
       flex: 1;
@@ -155,10 +319,10 @@
     }
 
     .mobile-nav-item.active, .mobile-nav-item:hover {
-      color: var(--primary, #2563eb);
+      color: var(--primary);
     }
 
-    #app {
+    #app, #content {
       flex: 1;
       width: 100%;
       max-width: 1200px;
@@ -167,6 +331,7 @@
       box-sizing: border-box;
     }
 
+    /* Toasts */
     #toast-container {
       position: fixed;
       bottom: 1.5rem;
@@ -206,10 +371,26 @@
     @media (max-width: 768px) {
       .main-nav { display: none; }
       .mobile-bottom-nav { display: flex; }
-      #app { padding-bottom: 5.5rem; }
+      #app, #content { padding-bottom: 5.5rem; }
       #toast-container { bottom: 4.5rem; left: 1rem; right: 1rem; }
     }
   </style>
+
+  <!-- Universal Container Fallback Safeguard (Guarantees container is never null) -->
+  <script>
+    (function() {
+      const _origGet = document.getElementById.bind(document);
+      document.getElementById = function(id) {
+        const el = _origGet(id);
+        if (el) return el;
+        // If app.js or router looks for 'content', 'app', 'main', or 'container'
+        if (['content', 'app', 'main', 'main-content', 'container', 'app-container'].includes(id)) {
+          return _origGet('content') || _origGet('app') || document.querySelector('main') || document.body;
+        }
+        return null;
+      };
+    })();
+  </script>
 </head>
 <body>
 
@@ -278,10 +459,12 @@
     </div>
   </header>
 
-  <!-- SPA View Injection Mount Point -->
+  <!-- Universal View Injection Mount Point (Both #app and #content provided) -->
   <main id="app" role="main">
-    <div class="loader-center" style="display:flex; justify-content:center; align-items:center; min-height:50vh;">
-      <div class="spinner" style="width:40px; height:40px; border:4px solid #e2e8f0; border-top-color:#2563eb; border-radius:50%; animation:spin 0.8s linear infinite;"></div>
+    <div id="content">
+      <div class="loader-center">
+        <div class="spinner"></div>
+      </div>
     </div>
   </main>
 
@@ -325,7 +508,7 @@
   <!-- Notification Toast Container -->
   <div id="toast-container" aria-live="polite"></div>
 
-  <!-- Active Route Highlighter Script -->
+  <!-- Route Change Handler -->
   <script>
     function updateActiveNav() {
       const hash = window.location.hash || '#/';
@@ -342,8 +525,8 @@
     window.addEventListener('DOMContentLoaded', updateActiveNav);
   </script>
 
-  <!-- Production App Loader with Version Cache-Busting -->
-  <script type="module" src="js/app.js?v=36"></script>
+  <!-- Production App Bootstrapper with Version Cache-Busting -->
+  <script type="module" src="js/app.js?v=37"></script>
 
 </body>
 </html>
