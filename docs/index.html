@@ -14,7 +14,7 @@
   <!-- Supabase Official SDK (Provides window.supabase for supabaseClient.js) -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
-  <!-- Complete Inlined Production Stylesheet (Eliminates CSS 404 errors) -->
+  <!-- Complete Inlined Production Stylesheet -->
   <style>
     :root {
       --primary: #2563eb;
@@ -293,6 +293,7 @@
       box-sizing: border-box;
     }
 
+    /* Notification Toasts */
     #toast-container {
       position: fixed;
       bottom: 1.5rem;
@@ -336,32 +337,10 @@
       #toast-container { bottom: 4.5rem; left: 1rem; right: 1rem; }
     }
   </style>
-
-  <!-- Universal DOM Resolver (Guarantees container is never null regardless of requested ID) -->
-  <script>
-    (function() {
-      const _origGet = document.getElementById.bind(document);
-      document.getElementById = function(id) {
-        const el = _origGet(id);
-        if (el) return el;
-        return _origGet('view') || _origGet('content') || _origGet('app') || document.querySelector('main') || document.body;
-      };
-
-      const _origQuery = document.querySelector.bind(document);
-      document.querySelector = function(sel) {
-        const el = _origQuery(sel);
-        if (el) return el;
-        if (sel && (sel.includes('view') || sel.includes('content') || sel.includes('app') || sel.includes('main') || sel.includes('container'))) {
-          return _origGet('view') || _origGet('content') || _origGet('app') || document.body;
-        }
-        return null;
-      };
-    })();
-  </script>
 </head>
 <body>
 
-  <!-- Top Main Navigation Bar (Analytics Removed for Normal Users) -->
+  <!-- Top Main Navigation Bar (Analytics Hidden from Public) -->
   <header class="main-header">
     <div class="header-container">
       
@@ -417,9 +396,9 @@
     </div>
   </header>
 
-  <!-- Complete Nested View Injection Mount Points (Guarantees matching for #app, #content, #view) -->
-  <main id="app" class="container app main-content router-view view page-content" role="main">
-    <div id="content" class="content main container view router-view outlet">
+  <!-- Mount Point: Provides #app, #content, and #view simultaneously -->
+  <main id="app" class="container app main-content" role="main">
+    <div id="content" class="content main container">
       <div id="view" class="view">
         <div class="loader-center">
           <div class="spinner"></div>
@@ -428,7 +407,7 @@
     </div>
   </main>
 
-  <!-- Mobile Bottom Navigation Bar (Analytics Removed) -->
+  <!-- Mobile Bottom Navigation Bar -->
   <nav class="mobile-bottom-nav" aria-label="Mobile Navigation">
     <a href="#/dashboard" class="mobile-nav-item" id="mob-nav-home">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -468,7 +447,7 @@
   <!-- Notification Toast Container -->
   <div id="toast-container" aria-live="polite"></div>
 
-  <!-- Route Change Handler -->
+  <!-- Active Route Highlighter Script -->
   <script>
     function updateActiveNav() {
       const hash = window.location.hash || '#/';
