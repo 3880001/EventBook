@@ -3,7 +3,7 @@ import type { CapacitorConfig } from '@capacitor/cli';
 const config: CapacitorConfig = {
   appId: 'com.eventbook.app',
   appName: 'EventBook',
-  webDir: 'dist',
+  webDir: 'docs',
   bundledWebRuntime: false,
   server: {
     androidScheme: 'https',
