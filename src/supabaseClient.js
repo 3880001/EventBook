@@ -1,7 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 
 export const supabaseUrl = "https://oybwrnokffjmdpnnymxm.supabase.co";
-export const supabaseKey = "";
+export const supabaseKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im95Yndybm9rZmZqbWRwbm55bXhtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDAwMzgwNTMsImV4cCI6MjA1NTYxNDA1M30.qD2L9R6S8";
 
 if (!window.__eventbook_supabase_client) {
   window.__eventbook_supabase_client = createClient(supabaseUrl, supabaseKey, {
