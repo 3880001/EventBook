@@ -3,7 +3,7 @@ import { defineConfig } from 'vite';
 export default defineConfig({
   base: './', // Ensures relative path asset loading on GitHub Pages
   build: {
-    outDir: 'dist',
+    outDir: 'docs',
     sourcemap: true,
     rollupOptions: {
       output: {
