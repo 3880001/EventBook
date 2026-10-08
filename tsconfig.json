@@ -10,7 +10,8 @@
     "isolatedModules": true,
     "noEmit": true,
     "allowJs": true,
-    "checkJs": false
+    "checkJs": false,
+    "noImplicitAny": false
   },
   "include": ["src"]
 }
