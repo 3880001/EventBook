@@ -3,7 +3,17 @@
   "private": true,
   "version": "1.4.0",
   "type": "module",
+  {
   "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "mobile:build": "npm run build && npx cap sync",
+    "mobile:ios": "npm run mobile:build && npx cap open ios",
+    "mobile:android": "npm run mobile:build && npx cap open android"
+  }
+}
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
