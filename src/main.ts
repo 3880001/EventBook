@@ -12,11 +12,14 @@ import { renderFeedbackPage } from './views/feedback';
 import { renderAuthPage } from './views/auth';
 import { supabase } from './supabaseClient';
 
+// Import CSS stylesheets if they exist
+const cssModules = import.meta.glob('./css/*.css', { eager: true });
+
 // 1. Initialize Telemetry & Error Tracking
 initTelemetry();
 
 // 2. Resolve App Container
-function getAppContainer(): HTMLElement {
+function getAppContainer() {
   return (
     document.getElementById('view') ||
     document.getElementById('content') ||
@@ -30,16 +33,16 @@ const routes = {
   '/': () => renderDashboard(getAppContainer()),
   '/dashboard': () => renderDashboard(getAppContainer()),
   '/events': () => renderMyEvents(getAppContainer()),
-  '/create': (ctx: any) => renderWizard(getAppContainer(), ctx || {}),
-  '/edit/:id': (ctx: any) => renderWizard(getAppContainer(), ctx || {}),
-  '/publish/:id': (ctx: any) => renderPublishPage(getAppContainer(), ctx || {}),
-  '/book/:slug': (ctx: any) => renderBookingPage(getAppContainer(), ctx || {}),
-  '/ticket/:ref': (ctx: any) => renderTicketPage(getAppContainer(), ctx || {}),
-  '/rsvp/:ref/:action': (ctx: any) => renderRsvpPage(getAppContainer(), ctx || {}),
-  '/rsvp/:ref': (ctx: any) => renderRsvpPage(getAppContainer(), ctx || {}),
-  '/admin': (ctx: any) => renderAdminDashboard(getAppContainer(), ctx || {}),
+  '/create': (ctx) => renderWizard(getAppContainer(), ctx || {}),
+  '/edit/:id': (ctx) => renderWizard(getAppContainer(), ctx || {}),
+  '/publish/:id': (ctx) => renderPublishPage(getAppContainer(), ctx || {}),
+  '/book/:slug': (ctx) => renderBookingPage(getAppContainer(), ctx || {}),
+  '/ticket/:ref': (ctx) => renderTicketPage(getAppContainer(), ctx || {}),
+  '/rsvp/:ref/:action': (ctx) => renderRsvpPage(getAppContainer(), ctx || {}),
+  '/rsvp/:ref': (ctx) => renderRsvpPage(getAppContainer(), ctx || {}),
+  '/admin': (ctx) => renderAdminDashboard(getAppContainer(), ctx || {}),
   '/analytics': () => { window.location.hash = '#/admin?tab=analytics'; },
-  '/feedback/:id': (ctx: any) => renderFeedbackPage(getAppContainer(), ctx || {}),
+  '/feedback/:id': (ctx) => renderFeedbackPage(getAppContainer(), ctx || {}),
   '/auth': () => renderAuthPage(getAppContainer())
 };
 
