@@ -1,0 +1,61 @@
+name: EventBook Enterprise CI/CD & Deploy
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: 'pages'
+  cancel-in-progress: true
+
+jobs:
+  quality-gate-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js Environment
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      # If using npm dependencies
+      - name: Install Dependencies
+        run: npm ci || npm install
+
+      # QUALITY GATE 1: Strict Type Check
+      - name: TypeScript Static Analysis & Type Checking
+        run: npm run typecheck
+
+      # QUALITY GATE 2: Production Bundle Compilation
+      - name: Build Application with Vite (Deterministic Asset Hashing)
+        run: npm run build
+
+      # Deploy output artifact directly to GitHub Pages
+      - name: Upload Pages Artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: 'dist/'
+
+  deploy:
+    needs: quality-gate-and-build
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
